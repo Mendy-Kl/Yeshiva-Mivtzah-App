@@ -1,0 +1,132 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Primitives
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isValidTimestamp(ts) { return ts is int && ts >= request.time.toMillis() - 864000000 && ts <= request.time.toMillis() + 864000000; }
+
+    // Validation Blueprints
+    function isValidStudent(data, userId) {
+      return data.keys().hasAll(['name', 'shiur', 'ownerId', 'createdAt', 'updatedAt']) 
+        && data.keys().size() == 5
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.shiur is string && data.shiur.size() > 0 && data.shiur.size() <= 100
+        && data.ownerId == userId
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    function isValidLesson(data, userId) {
+      return data.keys().hasAll(['date', 'subject', 'shiurim', 'records', 'isActive', 'ownerId', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 8
+        && data.date is string && data.date.size() > 0 && data.date.size() <= 100
+        && data.subject is string && data.subject.size() >= 0 && data.subject.size() <= 100
+        && data.shiurim is list && data.shiurim.size() <= 50
+        && data.records is map
+        && data.isActive is bool
+        && data.ownerId == userId
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    function isValidExam(data, userId) {
+      return data.keys().hasAll(['subject', 'date', 'shiurim', 'material', 'grades', 'ownerId', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 8
+        && data.subject is string && data.subject.size() > 0 && data.subject.size() <= 100
+        && data.date is string && data.date.size() > 0 && data.date.size() <= 100
+        && data.shiurim is list && data.shiurim.size() <= 50
+        && data.material is string && data.material.size() >= 0 && data.material.size() <= 2000
+        && data.grades is map
+        && data.ownerId == userId
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    function isValidNightRegistration(data, userId) {
+      return data.keys().hasAll(['date', 'shiurim', 'records', 'isActive', 'ownerId', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 7
+        && data.date is string && data.date.size() > 0 && data.date.size() <= 100
+        && data.shiurim is list && data.shiurim.size() <= 50
+        && data.records is map
+        && data.isActive is bool
+        && data.ownerId == userId
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    function isValidSettings(data, userId) {
+      return data.keys().hasAll(['shiurim', 'subjects', 'ownerId', 'updatedAt'])
+        && data.keys().size() == 4
+        && data.shiurim is list && data.shiurim.size() <= 100
+        && data.subjects is list && data.subjects.size() <= 100
+        && data.ownerId == userId
+        && data.updatedAt is int;
+    }
+
+    function isSecureOwner(existingData) {
+      return !('ownerId' in existingData) || existingData.ownerId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      match /students/{studentId} {
+        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isOwner(userId) && isValidStudent(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'shiur', 'updatedAt'])
+        ) && isValidStudent(incoming(), userId);
+        allow delete: if isOwner(userId) && isSecureOwner(existing());
+      }
+
+      match /lessons/{lessonId} {
+        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isOwner(userId) && isValidLesson(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['date', 'subject', 'shiurim', 'records', 'isActive', 'updatedAt'])
+        ) && isValidLesson(incoming(), userId);
+        allow delete: if isOwner(userId) && isSecureOwner(existing());
+      }
+
+      match /exams/{examId} {
+        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isOwner(userId) && isValidExam(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['subject', 'date', 'shiurim', 'material', 'grades', 'updatedAt'])
+        ) && isValidExam(incoming(), userId);
+        allow delete: if isOwner(userId) && isSecureOwner(existing());
+      }
+
+      match /nightRegistrations/{nightId} {
+        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isOwner(userId) && isValidNightRegistration(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['date', 'shiurim', 'records', 'isActive', 'updatedAt'])
+        ) && isValidNightRegistration(incoming(), userId);
+        allow delete: if isOwner(userId) && isSecureOwner(existing());
+      }
+
+      match /settings/global {
+        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isOwner(userId) && isValidSettings(incoming(), userId) && isValidTimestamp(incoming().updatedAt);
+        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && isValidTimestamp(incoming().updatedAt) && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['shiurim', 'subjects', 'updatedAt'])
+        ) && isValidSettings(incoming(), userId);
+        allow delete: if false;
+      }
+    }
+  }
+}

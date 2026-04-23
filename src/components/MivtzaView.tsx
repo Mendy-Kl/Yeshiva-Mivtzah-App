@@ -5,7 +5,7 @@ import { Search, Award, Trophy } from 'lucide-react';
 import { Student } from '../types';
 
 export function MivtzaView() {
-  const { students, lessons, exams, shiurim } = useAppStore();
+  const { students, lessons, exams, shiurim, nightRegistrations } = useAppStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedShiur, setSelectedShiur] = useState<string>('all');
 
@@ -64,6 +64,37 @@ export function MivtzaView() {
         }
       });
 
+      nightRegistrations.forEach(night => {
+        if (!night.shiurim.includes(student.shiur)) return;
+        const record = night.records[student.id];
+        if (!record) return;
+
+        // Room Lateness
+        if (record.isRoomAbsent) {
+          points -= 20; // Default penalty for total room absence (can adjust, user said >= 3 mins is -20)
+        } else if (record.roomMinutesLate !== undefined) {
+          if (record.roomMinutesLate > 0 && record.roomMinutesLate <= 2) {
+            points -= 10;
+          } else if (record.roomMinutesLate >= 3) {
+            points -= 20;
+          }
+        }
+
+        // Hamapil Lateness/Bonus
+        if (record.hamapilMinutesLate !== undefined) {
+          if (record.hamapilMinutesLate === 0) {
+            points += 10;
+          } else if (record.hamapilMinutesLate > 0) {
+            points -= 10;
+          }
+        }
+
+        // User didn't specify points for talking, but it might exist. Let's stick strictly to requested:
+        // "איחור לחדרים עד 2 דקות זה מינוס 10 נקודות, מ3 דק ומעלה זה מינוס 20 נקודות."
+        // "איחור להמפיל - מינוס 10 נקודות"
+        // "המפיל בזמן - פלוס 10 נקודות"
+      });
+
       exams.forEach(exam => {
         if (!exam.shiurim.includes(student.shiur)) return;
         const grade = exam.grades[student.id];
@@ -80,11 +111,12 @@ export function MivtzaView() {
         }
       });
       
-      pointsMap[student.id] = points;
+      // Enforce bounds: max 1300, min 0
+      pointsMap[student.id] = Math.max(0, Math.min(1300, points));
     });
     
     return pointsMap;
-  }, [students, lessons, exams]);
+  }, [students, lessons, exams, nightRegistrations]);
 
   const filteredStudents = useMemo(() => {
     return students

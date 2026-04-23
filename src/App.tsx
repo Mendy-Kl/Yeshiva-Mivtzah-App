@@ -3,15 +3,18 @@ import { AppProvider, useAppStore } from './AppContext';
 import { SettingsView } from './components/SettingsView';
 import { HomeView } from './components/HomeView';
 import { ActiveLessonView } from './components/ActiveLessonView';
+import { ActiveNightView } from './components/ActiveNightView';
 import { ReportsView } from './components/ReportsView';
 import { ExamsView } from './components/ExamsView';
 import { MivtzaView } from './components/MivtzaView';
-import { LayoutDashboard, Settings, FileText, BookOpen, GraduationCap, Award } from 'lucide-react';
+import { GeneralMatrixView } from './components/GeneralMatrixView';
+import { LayoutDashboard, Settings, FileText, BookOpen, GraduationCap, Award, Grid } from 'lucide-react';
 
 function AppContent() {
-  const [currentView, setCurrentView] = useState<'home' | 'settings' | 'reports' | 'exams' | 'mivtza'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'settings' | 'reports' | 'exams' | 'mivtza' | 'matrix'>('home');
   const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
-  const { lessons } = useAppStore();
+  const [activeNightId, setActiveNightId] = useState<string | null>(null);
+  const { lessons, nightRegistrations } = useAppStore();
 
   if (activeLessonId) {
     const isActuallyActive = lessons.find(l => l.id === activeLessonId)?.isActive;
@@ -23,6 +26,21 @@ function AppContent() {
           className="fixed bottom-6 right-6 bg-[var(--color-card-bg)] shadow-xl px-6 py-3 rounded-full font-bold text-[var(--color-text-main)] border border-black/5 hover:opacity-80 cursor-pointer"
         >
           {isActuallyActive ? 'חזרה החוצה (השיעור ימשיך ברקע)' : 'חזור למסך הראשי'}
+        </button>
+      </div>
+    );
+  }
+
+  if (activeNightId) {
+    const isActuallyActive = nightRegistrations.find(n => n.id === activeNightId)?.isActive;
+    return (
+      <div className="min-h-screen p-4 md:p-6">
+        <ActiveNightView nightId={activeNightId} onClose={() => setActiveNightId(null)} />
+        <button 
+          onClick={() => setActiveNightId(null)}
+          className="fixed bottom-6 right-6 bg-[var(--color-card-bg)] shadow-xl px-6 py-3 rounded-full font-bold text-[var(--color-text-main)] border border-black/5 hover:opacity-80 cursor-pointer z-40"
+        >
+          {isActuallyActive ? 'חזרה החוצה (הרישום ימשיך ברקע)' : 'חזור למסך הראשי'}
         </button>
       </div>
     );
@@ -48,14 +66,6 @@ function AppContent() {
               label="ראשי"
             />
             <NavButton 
-              active={currentView === 'mivtza'} 
-              onClick={() => setCurrentView('mivtza')}
-              icon={<Award size={18} />}
-              label="מבצע"
-              activeClass="bg-[#dcfce7] text-[#15803d]"
-              inactiveClass="bg-[#dcfce7]/50 text-[#15803d] hover:bg-[#dcfce7]"
-            />
-            <NavButton 
               active={currentView === 'exams'} 
               onClick={() => setCurrentView('exams')}
               icon={<GraduationCap size={18} />}
@@ -68,6 +78,20 @@ function AppContent() {
               label="דוחות"
             />
             <NavButton 
+              active={currentView === 'matrix'} 
+              onClick={() => setCurrentView('matrix')}
+              icon={<Grid size={18} />}
+              label="מצב כללי"
+            />
+            <NavButton 
+              active={currentView === 'mivtza'} 
+              onClick={() => setCurrentView('mivtza')}
+              icon={<Award size={18} />}
+              label="מבצע"
+              activeClass="bg-[#dcfce7] text-[#15803d]"
+              inactiveClass="bg-[#dcfce7]/50 text-[#15803d] hover:bg-[#dcfce7]"
+            />
+            <NavButton 
               active={currentView === 'settings'} 
               onClick={() => setCurrentView('settings')}
               icon={<Settings size={18} />}
@@ -78,12 +102,13 @@ function AppContent() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-4 md:p-6">
-        {currentView === 'home' && <HomeView onStart={setActiveLessonId} />}
+      <main className="flex-1 p-4 md:p-6 overflow-hidden max-w-full">
+        {currentView === 'home' && <HomeView onStart={setActiveLessonId} onStartNight={setActiveNightId} onNavigate={setCurrentView} />}
         {currentView === 'mivtza' && <MivtzaView />}
         {currentView === 'exams' && <ExamsView />}
         {currentView === 'settings' && <SettingsView />}
         {currentView === 'reports' && <ReportsView />}
+        {currentView === 'matrix' && <GeneralMatrixView />}
       </main>
     </div>
   );

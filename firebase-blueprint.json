@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Represents a student in the Yeshiva",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "shiur": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" }
+      },
+      "required": ["name", "shiur", "ownerId", "createdAt", "updatedAt"]
+    },
+    "Lesson": {
+      "title": "Lesson",
+      "description": "A tracked lesson/seder",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "subject": { "type": "string" },
+        "shiurim": { "type": "array", "items": { "type": "string" } },
+        "records": { "type": "object" },
+        "isActive": { "type": "boolean" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" }
+      },
+      "required": ["date", "subject", "shiurim", "records", "isActive", "ownerId", "createdAt", "updatedAt"]
+    },
+    "Exam": {
+      "title": "Exam",
+      "description": "An exam assessment",
+      "type": "object",
+      "properties": {
+        "subject": { "type": "string" },
+        "date": { "type": "string" },
+        "participatingShiurim": { "type": "array", "items": { "type": "string" } },
+        "material": { "type": "string" },
+        "grades": { "type": "object" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" }
+      },
+      "required": ["subject", "date", "participatingShiurim", "material", "grades", "ownerId", "createdAt", "updatedAt"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global settings for the user",
+      "type": "object",
+      "properties": {
+        "shiurim": { "type": "array", "items": { "type": "string" } },
+        "subjects": { "type": "array", "items": { "type": "string" } },
+        "ownerId": { "type": "string" },
+        "updatedAt": { "type": "integer" }
+      },
+      "required": ["shiurim", "subjects", "ownerId", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Students belonging to the user"
+    },
+    "/users/{userId}/lessons/{lessonId}": {
+      "schema": { "$ref": "#/entities/Lesson" },
+      "description": "Lessons recorded by the user"
+    },
+    "/users/{userId}/exams/{examId}": {
+      "schema": { "$ref": "#/entities/Exam" },
+      "description": "Exams recorded by the user"
+    },
+    "/users/{userId}/settings/global": {
+      "schema": { "$ref": "#/entities/Settings" },
+      "description": "Settings for the user"
+    }
+  }
+}

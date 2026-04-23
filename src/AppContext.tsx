@@ -1,6 +1,8 @@
-import React, { createContext, useContext } from 'react';
-import { useLocalStorage } from './useLocalStorage';
-import { Student, Shiur, Lesson, StudentLessonRecord, Exam, ExamGrade } from './types';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { Student, Shiur, Lesson, StudentLessonRecord, Exam, ExamGrade, NightRegistration, StudentNightRecord } from './types';
+import { auth, db, login, logout } from './firebase';
+import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { useAuthState } from 'react-firebase-hooks/auth';
 
 interface AppState {
   students: Student[];
@@ -8,6 +10,7 @@ interface AppState {
   subjects: string[];
   lessons: Lesson[];
   exams: Exam[];
+  nightRegistrations: NightRegistration[];
   addStudent: (name: string, shiur: Shiur) => void;
   removeStudent: (id: string) => void;
   addShiur: (s: Shiur) => void;
@@ -21,47 +24,164 @@ interface AppState {
   addExam: (exam: Omit<Exam, 'id' | 'grades'>) => string;
   updateExamGrade: (examId: string, studentId: string, grade: Partial<ExamGrade>) => void;
   deleteExam: (examId: string) => void;
+  startNightRegistration: (shiurim: Shiur[]) => string;
+  updateNightRecord: (nightId: string, studentId: string, updates: Partial<StudentNightRecord>) => void;
+  finishNightRegistration: (nightId: string) => void;
+  deleteNightRegistration: (nightId: string) => void;
+  logout: () => void;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [students, setStudents] = useLocalStorage<Student[]>('yeshiva-students', []);
-  const [shiurim, setShiurim] = useLocalStorage<Shiur[]>('yeshiva-shiurim', []);
-  const [subjects, setSubjects] = useLocalStorage<string[]>('yeshiva-subjects', []);
-  const [lessons, setLessons] = useLocalStorage<Lesson[]>('yeshiva-lessons', []);
-  const [exams, setExams] = useLocalStorage<Exam[]>('yeshiva-exams', []);
+  const [user, loading] = useAuthState(auth);
+  
+  const [students, setStudents] = useState<Student[]>([]);
+  const [shiurim, setShiurim] = useState<Shiur[]>([]);
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [exams, setExams] = useState<Exam[]>([]);
+  const [nightRegistrations, setNightRegistrations] = useState<NightRegistration[]>([]);
 
-  const addStudent = (name: string, shiur: Shiur) => {
+  useEffect(() => {
+    if (!user) return;
+
+    const userId = user.uid;
+
+    const qStudents = query(collection(db, `users/${userId}/students`), where('ownerId', '==', userId));
+    const unsubStudents = onSnapshot(qStudents, snap => {
+      setStudents(snap.docs.map(d => ({ ...(d.data() as any), id: d.id } as Student)));
+    });
+
+    const qLessons = query(collection(db, `users/${userId}/lessons`), where('ownerId', '==', userId));
+    const unsubLessons = onSnapshot(qLessons, snap => {
+      setLessons(snap.docs.map(d => ({ ...(d.data() as any), id: d.id } as Lesson)));
+    });
+
+    const qExams = query(collection(db, `users/${userId}/exams`), where('ownerId', '==', userId));
+    const unsubExams = onSnapshot(qExams, snap => {
+      setExams(snap.docs.map(d => ({ ...(d.data() as any), id: d.id } as Exam)));
+    });
+
+    const qNights = query(collection(db, `users/${userId}/nightRegistrations`), where('ownerId', '==', userId));
+    const unsubNights = onSnapshot(qNights, snap => {
+      setNightRegistrations(snap.docs.map(d => ({ ...(d.data() as any), id: d.id } as NightRegistration)));
+    });
+
+    const unsubSettings = onSnapshot(doc(db, `users/${userId}/settings/global`), snap => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setShiurim(data.shiurim || []);
+        setSubjects(data.subjects || []);
+      } else {
+        // If settings doc doesn't exist, try local migration
+        migrateLocalData(userId);
+      }
+    });
+
+    return () => {
+      unsubStudents();
+      unsubLessons();
+      unsubExams();
+      unsubNights();
+      unsubSettings();
+    };
+  }, [user]);
+
+  const migrateLocalData = async (userId: string) => {
+    try {
+      const localStudents = JSON.parse(localStorage.getItem('yeshiva-students') || '[]');
+      const localShiurim = JSON.parse(localStorage.getItem('yeshiva-shiurim') || '[]');
+      const localSubjects = JSON.parse(localStorage.getItem('yeshiva-subjects') || '[]');
+      const localLessons = JSON.parse(localStorage.getItem('yeshiva-lessons') || '[]');
+      const localExams = JSON.parse(localStorage.getItem('yeshiva-exams') || '[]');
+
+      if (localShiurim.length || localSubjects.length) {
+        await setDoc(doc(db, `users/${userId}/settings/global`), {
+          shiurim: localShiurim,
+          subjects: localSubjects,
+          ownerId: userId,
+          updatedAt: Date.now()
+        }, { merge: true });
+        
+        for (const s of localStudents) {
+          const { id, ...data } = s;
+          await setDoc(doc(db, `users/${userId}/students/${s.id}`), {
+            ...data, ownerId: userId, createdAt: Date.now(), updatedAt: Date.now()
+          });
+        }
+        for (const l of localLessons) {
+          const { id, ...data } = l;
+          await setDoc(doc(db, `users/${userId}/lessons/${l.id}`), {
+            ...data, ownerId: userId, createdAt: Date.now(), updatedAt: Date.now()
+          });
+        }
+        for (const e of localExams) {
+          const { id, ...data } = e;
+          await setDoc(doc(db, `users/${userId}/exams/${e.id}`), {
+            ...data, ownerId: userId, createdAt: Date.now(), updatedAt: Date.now()
+          });
+        }
+        
+        // Mark as migrated
+        localStorage.removeItem('yeshiva-students');
+        console.log('Migration completed!');
+      }
+    } catch(err) {
+      console.error(err);
+    }
+  };
+
+  const updateSettings = async (newShiurim: string[], newSubjects: string[]) => {
+    if (!user) return;
+    const ref = doc(db, `users/${user.uid}/settings/global`);
+    await setDoc(ref, {
+      shiurim: newShiurim,
+      subjects: newSubjects,
+      ownerId: user.uid,
+      updatedAt: Date.now()
+    }, { merge: true });
+  };
+
+  const addStudent = async (name: string, shiur: Shiur) => {
+    if (!user) return;
     const id = Date.now().toString();
-    setStudents([...students, { id, name, shiur }]);
+    await setDoc(doc(db, `users/${user.uid}/students/${id}`), {
+      name,
+      shiur,
+      ownerId: user.uid,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
   };
 
-  const removeStudent = (id: string) => {
-    setStudents(students.filter(s => s.id !== id));
+  const removeStudent = async (id: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, `users/${user.uid}/students/${id}`));
   };
 
-  const addShiur = (s: Shiur) => {
+  const addShiur = async (s: Shiur) => {
     if (!shiurim.includes(s)) {
-      setShiurim([...shiurim, s]);
+      await updateSettings([...shiurim, s], subjects);
     }
   };
 
-  const removeShiur = (s: Shiur) => {
-    setShiurim(shiurim.filter(shiur => shiur !== s));
+  const removeShiur = async (s: Shiur) => {
+    await updateSettings(shiurim.filter(shiur => shiur !== s), subjects);
   };
 
-  const addSubject = (s: string) => {
+  const addSubject = async (s: string) => {
     if (!subjects.includes(s)) {
-      setSubjects([...subjects, s]);
+      await updateSettings(shiurim, [...subjects, s]);
     }
   };
 
-  const removeSubject = (s: string) => {
-    setSubjects(subjects.filter(subj => subj !== s));
+  const removeSubject = async (s: string) => {
+    await updateSettings(shiurim, subjects.filter(subj => subj !== s));
   };
 
   const startLesson = (subject: string, selectedShiurim: Shiur[]) => {
+    if (!user) return "";
     const newLesson: Lesson = {
       id: Date.now().toString(),
       date: new Date().toISOString(),
@@ -70,73 +190,174 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       records: {},
       isActive: true,
     };
-    setLessons([...lessons, newLesson]);
-    return newLesson.id;
+    
+    const { id, ...lessonData } = newLesson;
+    setDoc(doc(db, `users/${user.uid}/lessons/${id}`), {
+      ...lessonData,
+      ownerId: user.uid,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    
+    return id;
   };
 
-  const updateLessonRecord = (lessonId: string, studentId: string, updates: Partial<StudentLessonRecord>) => {
-    setLessons(lessons.map(lesson => {
-      if (lesson.id === lessonId) {
-        const currentRecord = lesson.records[studentId] || { attendance: null, behavior1: null, behavior2: null };
-        return {
-          ...lesson,
-          records: {
-            ...lesson.records,
-            [studentId]: { ...currentRecord, ...updates }
-          }
-        };
-      }
-      return lesson;
-    }));
+  const updateLessonRecord = async (lessonId: string, studentId: string, updates: Partial<StudentLessonRecord>) => {
+    if (!user) return;
+    const lesson = lessons.find(l => l.id === lessonId);
+    if (!lesson) return;
+
+    const currentRecord = lesson.records[studentId] || { attendance: null, behavior1: null, behavior2: null };
+    const newRecords = {
+      ...lesson.records,
+      [studentId]: { ...currentRecord, ...updates }
+    };
+
+    await updateDoc(doc(db, `users/${user.uid}/lessons/${lessonId}`), {
+      records: newRecords,
+      updatedAt: Date.now()
+    });
   };
 
-  const finishLesson = (lessonId: string) => {
-    setLessons(lessons.map(lesson => 
-      lesson.id === lessonId ? { ...lesson, isActive: false } : lesson
-    ));
+  const finishLesson = async (lessonId: string) => {
+    if (!user) return;
+    await updateDoc(doc(db, `users/${user.uid}/lessons/${lessonId}`), {
+      isActive: false,
+      updatedAt: Date.now()
+    });
   };
 
-  const deleteLesson = (lessonId: string) => {
-    setLessons(lessons.filter(lesson => lesson.id !== lessonId));
+  const deleteLesson = async (lessonId: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, `users/${user.uid}/lessons/${lessonId}`));
   };
 
   const addExam = (examArgs: Omit<Exam, 'id' | 'grades'>) => {
-    const newExam: Exam = {
+    if (!user) return "";
+    const id = Date.now().toString();
+    
+    setDoc(doc(db, `users/${user.uid}/exams/${id}`), {
       ...examArgs,
-      id: Date.now().toString(),
-      grades: {}
+      grades: {},
+      ownerId: user.uid,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    
+    return id;
+  };
+
+  const updateExamGrade = async (examId: string, studentId: string, grade: Partial<ExamGrade>) => {
+    if (!user) return;
+    const exam = exams.find(e => e.id === examId);
+    if (!exam) return;
+
+    const currentGrade = exam.grades[studentId] || { score: '', note: '' };
+    const newGrades = {
+      ...exam.grades,
+      [studentId]: { ...currentGrade, ...grade }
     };
-    setExams([...exams, newExam]);
-    return newExam.id;
+
+    await updateDoc(doc(db, `users/${user.uid}/exams/${examId}`), {
+      grades: newGrades,
+      updatedAt: Date.now()
+    });
   };
 
-  const updateExamGrade = (examId: string, studentId: string, grade: Partial<ExamGrade>) => {
-    setExams(exams.map(exam => {
-      if (exam.id === examId) {
-        const currentGrade = exam.grades[studentId] || { score: '', note: '' };
-        return {
-          ...exam,
-          grades: {
-            ...exam.grades,
-            [studentId]: { ...currentGrade, ...grade }
-          }
-        };
+  const deleteExam = async (examId: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, `users/${user.uid}/exams/${examId}`));
+  };
+
+  const startNightRegistration = (selectedShiurim: Shiur[]) => {
+    if (!user) return "";
+    const id = Date.now().toString();
+    setDoc(doc(db, `users/${user.uid}/nightRegistrations/${id}`), {
+      date: new Date().toISOString(),
+      shiurim: selectedShiurim,
+      records: {},
+      isActive: true,
+      ownerId: user.uid,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+    return id;
+  };
+
+  const updateNightRecord = async (nightId: string, studentId: string, updates: Partial<StudentNightRecord>) => {
+    if (!user) return;
+    const night = nightRegistrations.find(n => n.id === nightId);
+    if (!night) return;
+
+    const currentRecord = night.records[studentId] || {};
+    const mergedRecord = { ...currentRecord, ...updates };
+    
+    // Firebase doesn't support undefined values, so we delete keys that are explicitly undefined
+    Object.keys(mergedRecord).forEach(key => {
+      const k = key as keyof typeof mergedRecord;
+      if (mergedRecord[k] === undefined) {
+        delete mergedRecord[k];
       }
-      return exam;
-    }));
+    });
+
+    const newRecords = {
+      ...night.records,
+      [studentId]: mergedRecord
+    };
+
+    await updateDoc(doc(db, `users/${user.uid}/nightRegistrations/${nightId}`), {
+      records: newRecords,
+      updatedAt: Date.now()
+    });
   };
 
-  const deleteExam = (examId: string) => {
-    setExams(exams.filter(exam => exam.id !== examId));
+  const finishNightRegistration = async (nightId: string) => {
+    if (!user) return;
+    await updateDoc(doc(db, `users/${user.uid}/nightRegistrations/${nightId}`), {
+      isActive: false,
+      updatedAt: Date.now()
+    });
   };
+
+  const deleteNightRegistration = async (nightId: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, `users/${user.uid}/nightRegistrations/${nightId}`));
+  };
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div></div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4" dir="rtl">
+        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center space-y-6">
+          <div className="w-16 h-16 bg-orange-100 text-orange-600 rounded-2xl mx-auto flex items-center justify-center mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900">ברוכים הבאים</h1>
+          <p className="text-gray-500">המערכת עודכנה לגיבוי ענן! כדי שכל הנתונים יסתנכרו בין כל המכשירים שלך, יש להתחבר עם גוגל.</p>
+          <button 
+            onClick={login}
+            className="w-full bg-orange-600 text-white hover:bg-orange-700 py-3 rounded-xl font-bold transition-colors shadow-lg hover:shadow-orange-600/30 flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+            התחברות מאובטחת
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <AppContext.Provider value={{
-      students, shiurim, subjects, lessons, exams,
+      students, shiurim, subjects, lessons, exams, nightRegistrations,
       addStudent, removeStudent, addShiur, removeShiur,
       addSubject, removeSubject,
       startLesson, updateLessonRecord, finishLesson, deleteLesson,
-      addExam, updateExamGrade, deleteExam
+      addExam, updateExamGrade, deleteExam, 
+      startNightRegistration, updateNightRecord, finishNightRegistration, deleteNightRegistration,
+      logout
     }}>
       {children}
     </AppContext.Provider>

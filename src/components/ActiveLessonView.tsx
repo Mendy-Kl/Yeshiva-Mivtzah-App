@@ -3,6 +3,7 @@ import { useAppStore } from '../AppContext';
 import { Card, Button, Input } from './ui';
 import { Users, CheckCircle, XCircle, Clock, BookOpen, UserX, Activity, MessageSquare } from 'lucide-react';
 import { StudentLessonRecord, Attendance, Behavior, Student } from '../types';
+import { formatHebrewDate } from '../lib/dateUtils';
 
 export function ActiveLessonView({ lessonId, onClose }: { lessonId: string, onClose?: () => void }) {
   const { lessons, students, updateLessonRecord, finishLesson, deleteLesson } = useAppStore();
@@ -16,6 +17,14 @@ export function ActiveLessonView({ lessonId, onClose }: { lessonId: string, onCl
   const participatingStudents = students
     .filter(s => lesson.shiurim.includes(s.shiur))
     .sort((a, b) => a.shiur.localeCompare(b.shiur) || a.name.localeCompare(b.name));
+
+  const groupedStudents = participatingStudents.reduce((acc, student) => {
+    if (!acc[student.shiur]) acc[student.shiur] = [];
+    acc[student.shiur].push(student);
+    return acc;
+  }, {} as Record<string, typeof participatingStudents>);
+
+  const sortedShiurKeys = Object.keys(groupedStudents).sort((a, b) => a.localeCompare(b));
 
   const handleUpdate = (studentId: string, updates: Partial<StudentLessonRecord>) => {
     updateLessonRecord(lessonId, studentId, updates);
@@ -40,7 +49,7 @@ export function ActiveLessonView({ lessonId, onClose }: { lessonId: string, onCl
         <div>
           <h1 className="text-2xl font-bold mb-2">שיעור: {lesson.subject}</h1>
           <p className="opacity-90 text-sm">
-            {new Date(lesson.date).toLocaleDateString('he-IL')} • משתתפים: {participatingStudents.length} • שיעורים: {lesson.shiurim.join(', ')}
+            {formatHebrewDate(lesson.date)} • משתתפים: {participatingStudents.length} • שיעורים: {lesson.shiurim.join(', ')}
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto relative">
@@ -75,29 +84,39 @@ export function ActiveLessonView({ lessonId, onClose }: { lessonId: string, onCl
         </div>
       </Card>
 
-      <Card className="p-0 bg-[var(--color-card-bg)] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] border border-black/[0.02]">
-        <div className="hidden lg:grid lg:grid-cols-[200px_1fr_1fr_1fr_40px] bg-gray-50/50 p-4 border-b border-black/5 text-xs font-bold text-gray-500 tracking-wide rounded-t-[24px]">
-          <div>תלמיד</div>
-          <div>נוכחות</div>
-          <div>ציון א' (למידה)</div>
-          <div>ציון ב' (למידה)</div>
-          <div></div>
-        </div>
-        <div className="flex flex-col divide-y divide-black/5">
-        {participatingStudents.map(student => {
-          const record = lesson.records[student.id] || { attendance: null, behavior1: null, behavior2: null };
-          
+      <div className={`grid grid-cols-1 ${sortedShiurKeys.length > 1 ? 'xl:grid-cols-2' : ''} gap-6 items-start`}>
+        {sortedShiurKeys.map(shiurKey => {
+          const studentsInShiur = groupedStudents[shiurKey];
           return (
-            <StudentRow 
-              key={student.id} 
-              student={student} 
-              record={record} 
-              handleUpdate={handleUpdate} 
-            />
+            <div key={shiurKey} className="flex flex-col gap-3">
+              <h2 className="text-xl font-bold px-2">שיעור {shiurKey}</h2>
+              <Card className="p-0 bg-[var(--color-card-bg)] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] border border-black/[0.02]">
+                <div className="hidden lg:grid lg:grid-cols-[200px_1fr_1fr_1fr_40px] bg-gray-50/50 p-4 border-b border-black/5 text-xs font-bold text-gray-500 tracking-wide rounded-t-[24px]">
+                  <div>תלמיד</div>
+                  <div>נוכחות</div>
+                  <div>ציון א' (למידה)</div>
+                  <div>ציון ב' (למידה)</div>
+                  <div></div>
+                </div>
+                <div className="flex flex-col divide-y divide-black/5">
+                {studentsInShiur.map(student => {
+                  const record = lesson.records[student.id] || { attendance: null, behavior1: null, behavior2: null };
+                  
+                  return (
+                    <StudentRow 
+                      key={student.id} 
+                      student={student} 
+                      record={record} 
+                      handleUpdate={handleUpdate} 
+                    />
+                  );
+                })}
+                </div>
+              </Card>
+            </div>
           );
         })}
-        </div>
-      </Card>
+      </div>
     </div>
   );
 }
@@ -180,7 +199,7 @@ const StudentRow: React.FC<{ student: Student, record: any, handleUpdate: any }>
                             className="fixed inset-0 z-[90]" 
                             onClick={() => setIsAbsenceNoteOpen(false)}
                           />
-                          <div className="absolute top-full right-0 lg:left-1/2 lg:-translate-x-1/2 mt-2 w-48 bg-white rounded-xl shadow-[0_10px_40px_-5px_rgba(0,0,0,0.2)] border border-black/10 z-[100] flex flex-col overflow-hidden">
+                          <div className="absolute top-full right-0 lg:right-auto lg:left-0 origin-top-left mt-2 w-48 max-w-[90vw] bg-white rounded-xl shadow-[0_10px_40px_-5px_rgba(0,0,0,0.2)] border border-black/10 z-[100] flex flex-col overflow-hidden">
                             <div className="p-2 border-b border-black/5 bg-[var(--color-surface)] flex justify-between items-center cursor-default">
                               <span className="text-[10px] font-bold text-[var(--color-text-main)] cursor-text">סיבת חיסור</span>
                               <button onClick={() => setIsAbsenceNoteOpen(false)} className="text-gray-400 hover:text-[var(--color-danger)] transition-colors p-0.5 rounded hover:bg-black/5">
@@ -257,7 +276,7 @@ const StudentRow: React.FC<{ student: Student, record: any, handleUpdate: any }>
                   className="fixed inset-0 z-[90]" 
                   onClick={() => setIsNoteModalOpen(false)}
                 />
-                <div className="absolute top-full left-0 lg:left-auto lg:right-0 mt-2 w-64 bg-white rounded-xl shadow-[0_10px_40px_-5px_rgba(0,0,0,0.2)] border border-black/10 z-[100] flex flex-col overflow-hidden">
+                <div className="absolute top-full left-0 origin-top-left mt-2 w-64 max-w-[90vw] bg-white rounded-xl shadow-[0_10px_40px_-5px_rgba(0,0,0,0.2)] border border-black/10 z-[100] flex flex-col overflow-hidden">
                   <div className="p-2 border-b border-black/5 bg-[var(--color-surface)] flex justify-between items-center cursor-default">
                     <span className="text-xs font-bold text-[var(--color-text-main)] cursor-text">הערה: {student.name}</span>
                     <button onClick={() => setIsNoteModalOpen(false)} className="text-gray-400 hover:text-[var(--color-danger)] transition-colors p-1">

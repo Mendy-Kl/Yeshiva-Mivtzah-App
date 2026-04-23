@@ -42,3 +42,19 @@ export interface Exam {
   shiurim: Shiur[];
   grades: Record<string, ExamGrade>; // mapping studentId to their grade
 }
+
+export interface StudentNightRecord {
+  roomMinutesLate?: number; // 0 or undefined means on time (if not absent)
+  isRoomAbsent?: boolean;
+  hamapilMinutesLate?: number; // 0 or undefined means on time
+  talking?: boolean; // talking during sleep time
+  notes?: string;
+}
+
+export interface NightRegistration {
+  id: string;
+  date: string;
+  shiurim: Shiur[];
+  isActive: boolean;
+  records: Record<string, StudentNightRecord>; // mapping studentId to their record
+}

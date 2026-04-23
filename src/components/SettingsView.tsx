@@ -1,14 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../AppContext';
 import { Button, Card, Input } from './ui';
-import { Settings, Users, BookOpen, Trash2, LibraryBig } from 'lucide-react';
+import { Settings, Users, BookOpen, Trash2, LibraryBig, LogOut } from 'lucide-react';
 
 export function SettingsView() {
-  const { shiurim, addShiur, removeShiur, students, addStudent, removeStudent, subjects, addSubject, removeSubject } = useAppStore();
+  const { shiurim, addShiur, removeShiur, students, addStudent, removeStudent, subjects, addSubject, removeSubject, logout } = useAppStore();
   const [newShiur, setNewShiur] = useState('');
   const [newSubject, setNewSubject] = useState('');
   const [newStudentName, setNewStudentName] = useState('');
-  const [selectedShiur, setSelectedShiur] = useState(shiurim[0] || '');
+  const [selectedShiur, setSelectedShiur] = useState('');
+
+  useEffect(() => {
+    if (!selectedShiur && shiurim.length > 0) {
+      setSelectedShiur(shiurim[0]);
+    }
+  }, [shiurim, selectedShiur]);
 
   const handleAddShiur = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,8 +41,19 @@ export function SettingsView() {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-7xl mx-auto w-full">
-      {/* Shiurim Manager */}
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-start px-1">
+        <button 
+          onClick={logout}
+          className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl font-medium transition-colors cursor-pointer"
+        >
+          <LogOut size={16} />
+          <span>התנתק מהענן</span>
+        </button>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-7xl mx-auto w-full">
+        {/* Shiurim Manager */}
       <Card className="flex flex-col h-full">
         <div className="flex items-center gap-3 mb-6">
           <BookOpen className="text-gray-400" />
@@ -150,6 +167,7 @@ export function SettingsView() {
           )}
         </div>
       </Card>
+      </div>
     </div>
   );
 }

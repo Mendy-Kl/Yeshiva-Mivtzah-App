@@ -1,19 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../AppContext';
 import { Card, Button, Input } from './ui';
 import { FileEdit, Plus, Trash2 } from 'lucide-react';
 import { ActiveExamView } from './ActiveExamView';
+import { formatHebrewDate } from '../lib/dateUtils';
+import { DateRangePicker } from './DateRangePicker';
 
 export function ExamsView() {
   const { exams, subjects, shiurim, addExam, deleteExam } = useAppStore();
   const [showAddModal, setShowAddModal] = useState(false);
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const [examToDeleteId, setExamToDeleteId] = useState<string | null>(null);
+  
+  const [dateRange, setDateRange] = useState<{start: Date | null, end: Date | null}>({ start: null, end: null });
 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [subject, setSubject] = useState('');
   const [material, setMaterial] = useState('');
   const [selectedShiurim, setSelectedShiurim] = useState<string[]>([]);
+
+  const filteredExams = useMemo(() => {
+    let filtered = exams.slice().reverse();
+    if (dateRange.start) {
+      const s = dateRange.start.getTime();
+      const e = dateRange.end ? dateRange.end.getTime() + 86400000 - 1 : s + 86400000 - 1; // End of day
+      filtered = filtered.filter(exam => {
+        const time = new Date(exam.date).getTime();
+        return time >= s && time <= e;
+      });
+    }
+    return filtered;
+  }, [exams, dateRange]);
 
   if (activeExamId) {
     return <ActiveExamView examId={activeExamId} onClose={() => setActiveExamId(null)} />;
@@ -46,18 +63,21 @@ export function ExamsView() {
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6">
-      <div className="flex justify-between items-center bg-white p-6 rounded-[24px] shadow-sm border border-black/5">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-[24px] shadow-sm border border-black/5">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 mb-1">ניהול מבחנים</h2>
           <p className="text-gray-500 text-sm">הוסף מבחנים חדשים, ציונים והערות לתלמידים.</p>
         </div>
-        <Button onClick={() => setShowAddModal(true)} className="gap-2">
-          <Plus size={18} /> הוסף מבחן
-        </Button>
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto rtl">
+          <DateRangePicker value={dateRange} onChange={setDateRange} />
+          <Button onClick={() => setShowAddModal(true)} className="gap-2">
+            <Plus size={18} /> הוסף מבחן
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {exams.slice().reverse().map(exam => (
+        {filteredExams.map(exam => (
           <Card key={exam.id} className="cursor-pointer hover:border-[var(--color-primary)] transition-colors group" onClick={() => setActiveExamId(exam.id)}>
             <div className="flex justify-between items-start mb-3">
               <h3 className="font-bold text-lg text-gray-900 line-clamp-1" title={exam.subject}>{exam.subject}</h3>
@@ -66,7 +86,7 @@ export function ExamsView() {
               </div>
             </div>
             <div className="text-sm text-gray-500 mb-2">
-              <span className="font-bold">תאריך:</span> {new Date(exam.date).toLocaleDateString('he-IL')}
+              <span className="font-bold">תאריך:</span> {formatHebrewDate(exam.date)}
             </div>
             <div className="text-sm text-gray-500 mb-2">
               <span className="font-bold">שיעורים:</span> {exam.shiurim.join(', ')}

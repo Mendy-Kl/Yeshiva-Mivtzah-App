@@ -3,6 +3,7 @@ import { useAppStore } from '../AppContext';
 import { Card, Button, Input } from './ui';
 import { MessageSquare, XCircle } from 'lucide-react';
 import { Student } from '../types';
+import { formatHebrewDate } from '../lib/dateUtils';
 
 export function ActiveExamView({ examId, onClose }: { examId: string, onClose: () => void }) {
   const { exams, students, updateExamGrade } = useAppStore();
@@ -20,7 +21,7 @@ export function ActiveExamView({ examId, onClose }: { examId: string, onClose: (
         <div>
           <h1 className="text-2xl font-bold mb-2">מבחן: {exam.subject}</h1>
           <p className="opacity-90 text-sm mb-1">
-            {new Date(exam.date).toLocaleDateString('he-IL')} • נבחנים: {participatingStudents.length} • שיעורים: {exam.shiurim.join(', ')}
+            {formatHebrewDate(exam.date)} • נבחנים: {participatingStudents.length} • שיעורים: {exam.shiurim.join(', ')}
           </p>
           {exam.material && (
              <p className="opacity-80 text-xs">חומר: {exam.material}</p>

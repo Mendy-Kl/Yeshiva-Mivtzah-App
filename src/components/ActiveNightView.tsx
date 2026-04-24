@@ -98,7 +98,7 @@ export function ActiveNightView({ nightId, onClose }: { nightId: string, onClose
         </div>
       </Card>
 
-      <div className={`grid grid-cols-1 ${sortedShiurKeys.length > 1 ? 'xl:grid-cols-2' : ''} gap-6 items-start`}>
+      <div className="grid grid-cols-1 gap-6 items-start">
         {sortedShiurKeys.map(shiurKey => {
           const studentsInShiur = groupedStudents[shiurKey];
           return (

@@ -81,46 +81,45 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
 
   return (
     <div className="w-full max-w-6xl mx-auto flex flex-col gap-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      
+      {/* Welcome & Start Lesson Card */}
+      <Card className="bg-[var(--color-primary)] flex flex-col justify-center items-center text-center py-8 lg:py-10 shadow-sm relative overflow-hidden">
+        <h1 className="text-2xl lg:text-3xl font-extrabold text-[var(--color-text-main)] mb-2">מעקב השגחה - ישיבה</h1>
+        <p className="font-medium opacity-80 mb-6 max-w-lg mx-auto text-base">
+          ניהול נוכחות והשגחה על תלמידים בצורה פשוטה, חכמה ומהירה.
+        </p>
         
-        {/* Welcome & Start Lesson Card */}
-        <Card className="md:col-span-2 bg-[var(--color-primary)] flex flex-col justify-center">
-          <h1 className="text-2xl font-bold text-[var(--color-text-main)] mb-2">מעקב השגחה - ישיבה</h1>
-          <p className="opacity-80 mb-8 max-w-lg">
-            ניהול נוכחות והשגחה על תלמידים בצורה פשוטה, חכמה ומהירה.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-3">
-            {activeLesson ? (
-              <Button size="lg" variant="secondary" className="flex-1" onClick={() => onStart(activeLesson.id)}>
-                <PlayCircle className="ml-2" /> חזור לשיעור הפעיל ({activeLesson.subject})
-              </Button>
-            ) : (
-              <Button size="lg" variant="secondary" className="flex-1" onClick={() => setShowStartModal('lesson')}>
-                <PlayCircle className="ml-2" /> התחל שיעור חדש
-              </Button>
-            )}
-
-            {activeNight ? (
-              <Button size="lg" className="flex-1 bg-indigo-900 text-white hover:bg-indigo-800 border-none" onClick={() => onStartNight && onStartNight(activeNight.id)}>
-                <Moon className="ml-2" /> חזור לרישום הלילה
-              </Button>
-            ) : (
-              <Button size="lg" className="flex-1 bg-indigo-900 text-white hover:bg-indigo-800 border-none" onClick={() => setShowStartModal('night')}>
-                <Moon className="ml-2" /> רישום לילה
-              </Button>
-            )}
-          </div>
-
-          <div className="mt-3">
-            <Button size="lg" variant="outline" className="w-full bg-white/50 border-orange-950/20 text-orange-950 font-bold hover:bg-white transition-all shadow-sm" onClick={() => onNavigate && onNavigate('matrix')}>
-              <BarChart3 className="ml-2" /> פתח טבלת מצב כללי (כל סדרי היום)
+        <div className="flex flex-col sm:flex-row justify-center gap-3 w-full max-w-xl mx-auto relative z-10">
+          {activeLesson ? (
+            <Button size="lg" variant="secondary" className="flex-1 text-[15px]" onClick={() => onStart(activeLesson.id)}>
+              <PlayCircle className="ml-2" size={18} /> חזור לשיעור הפעיל ({activeLesson.subject})
             </Button>
-          </div>
-        </Card>
+          ) : (
+            <Button size="lg" variant="secondary" className="flex-1 text-[15px]" onClick={() => setShowStartModal('lesson')}>
+              <PlayCircle className="ml-2" size={18} /> התחל שיעור חדש
+            </Button>
+          )}
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 md:col-span-3 gap-4">
+          {activeNight ? (
+            <Button size="lg" className="flex-1 bg-indigo-900 text-white hover:bg-indigo-800 border-none text-[15px] shadow-sm" onClick={() => onStartNight && onStartNight(activeNight.id)}>
+              <Moon className="ml-2" size={18} /> חזור לרישום הלילה
+            </Button>
+          ) : (
+            <Button size="lg" className="flex-1 bg-indigo-900 text-white hover:bg-indigo-800 border-none text-[15px] shadow-sm" onClick={() => setShowStartModal('night')}>
+              <Moon className="ml-2" size={18} /> רישום לילה
+            </Button>
+          )}
+        </div>
+
+        <div className="mt-3 w-full max-w-xl mx-auto relative z-10">
+          <Button size="lg" variant="outline" className="w-full bg-white/60 border-orange-950/20 text-orange-950 font-bold hover:bg-white transition-all shadow-sm text-[15px]" onClick={() => onNavigate && onNavigate('matrix')}>
+            <BarChart3 className="ml-2" size={18} /> פתח טבלת מצב כללי (כל סדרי היום)
+          </Button>
+        </div>
+      </Card>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card 
             className={`flex items-center gap-4 text-white cursor-pointer hover:opacity-90 transition-opacity ${showStudents ? 'bg-orange-600' : 'bg-[var(--color-secondary)]'}`}
             onClick={() => { setShowStudents(!showStudents); setShowHistory(false); setShowNightHistory(false); setShowStartModal(null); }}
@@ -149,7 +148,6 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
             </div>
           </Card>
         </div>
-      </div>
 
       {/* Start Lesson Modal (Embedded) */}
       {showStartModal === 'lesson' && !activeLesson && (

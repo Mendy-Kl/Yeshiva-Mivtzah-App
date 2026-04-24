@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../AppContext';
 import { Card } from './ui';
-import { Filter, Search } from 'lucide-react';
+import { Filter, Search, BarChart3, TrendingUp, Presentation, Calendar, CalendarDays } from 'lucide-react';
 import { StudentProfileView } from './StudentProfileView';
 import { DateRangePicker } from './DateRangePicker';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 interface FlatRecord {
   lessonId: string;
@@ -30,6 +31,9 @@ interface FlatExamRecord {
   time: number;
 }
 
+type GraphType = 'learning' | 'exams' | 'both';
+type TimeframeType = 'sessions' | 'days' | 'weeks' | 'months';
+
 export function ReportsView() {
   const { students, lessons, shiurim, subjects, exams } = useAppStore();
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
@@ -38,6 +42,11 @@ export function ReportsView() {
   const [activeStudentId, setActiveStudentId] = useState<string | null>(null);
   
   const [dateRange, setDateRange] = useState<{start: Date | null, end: Date | null}>({ start: null, end: null });
+
+  // Graph state
+  const [showGraph, setShowGraph] = useState(false);
+  const [graphType, setGraphType] = useState<GraphType>('both');
+  const [graphTimeframe, setGraphTimeframe] = useState<TimeframeType>('days');
 
   const finishedLessons = lessons.filter(l => !l.isActive);
 
@@ -203,6 +212,51 @@ export function ReportsView() {
     );
   };
 
+  const getWeekNumber = (d: Date) => {
+    d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1)/7);
+  };
+
+  const graphData = useMemo(() => {
+    if (!showGraph) return [];
+
+    const grouped: Record<string, { time: number, label: string, learningSum: number, learningCount: number, examSum: number, examCount: number }> = {};
+
+    const processTime = (time: number) => {
+      const d = new Date(time);
+      if (graphTimeframe === 'sessions') return { key: `${time}`, label: d.toLocaleDateString('he-IL', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}), t: time };
+      if (graphTimeframe === 'days') return { key: d.toLocaleDateString('en-CA'), label: d.toLocaleDateString('he-IL', {day:'2-digit', month:'2-digit'}), t: d.setHours(0,0,0,0) };
+      if (graphTimeframe === 'weeks') {
+        const w = getWeekNumber(d);
+        return { key: `${d.getFullYear()}-W${w}`, label: `שבוע ${w}`, t: d.getTime() };
+      }
+      if (graphTimeframe === 'months') return { key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString('he-IL', {month:'long', year:'2-digit'}), t: d.setDate(1) };
+      return { key: `${time}`, label: '', t: time };
+    };
+
+    filteredRecords.forEach(r => {
+      const { key, label, t } = processTime(r.time);
+      if (!grouped[key]) grouped[key] = { time: t, label, learningSum: 0, learningCount: 0, examSum: 0, examCount: 0 };
+      grouped[key].learningSum += r.learningSum;
+      grouped[key].learningCount += r.learningCount;
+    });
+
+    filteredExamRecords.forEach(r => {
+      const { key, label, t } = processTime(r.time);
+      if (!grouped[key]) grouped[key] = { time: t, label, learningSum: 0, learningCount: 0, examSum: 0, examCount: 0 };
+      grouped[key].examSum += r.score;
+      grouped[key].examCount += 1;
+    });
+
+    return Object.values(grouped).sort((a, b) => a.time - b.time).map(g => ({
+       label: g.label,
+       learningRate: g.learningCount > 0 ? Number((g.learningSum / g.learningCount).toFixed(1)) : null,
+       examAverage: g.examCount > 0 ? Number((g.examSum / g.examCount).toFixed(1)) : null
+    }));
+  }, [showGraph, filteredRecords, filteredExamRecords, graphTimeframe]);
+
   if (activeStudentId) {
     return <StudentProfileView studentId={activeStudentId} onClose={() => setActiveStudentId(null)} />;
   }
@@ -268,8 +322,8 @@ export function ReportsView() {
             </div>
           </div>
           
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-gray-100">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-start gap-8 pt-3 border-t border-gray-100">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <div className="flex items-center gap-1.5 text-xs font-bold text-gray-500 w-auto">
                 <Search size={14} />
                 <span>חיפוש:</span>
@@ -283,9 +337,82 @@ export function ReportsView() {
                 dir="rtl"
               />
             </div>
+
+            <div className="flex items-center gap-2 text-sm w-full sm:w-auto mt-2 sm:mt-0">
+              <span className="text-gray-500 font-bold text-xs"><TrendingUp size={14} className="inline mr-1"/> גרפים:</span>
+              <button 
+                onClick={() => setShowGraph(!showGraph)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${showGraph ? 'bg-indigo-50 border border-indigo-200 text-indigo-700 shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+              >
+                {showGraph ? 'הסתר גרף התקדמות' : 'הצג גרף התקדמות'}
+              </button>
+            </div>
           </div>
         </div>
       </Card>
+
+      {showGraph && (
+        <Card className="mb-4 bg-white/80 p-4 border border-black/5 shadow-sm">
+           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-2">
+                 <div className="flex bg-gray-100 p-1 rounded-lg">
+                   <button onClick={() => setGraphType('learning')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${graphType === 'learning' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>למידה</button>
+                   <button onClick={() => setGraphType('exams')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${graphType === 'exams' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>מבחנים</button>
+                   <button onClick={() => setGraphType('both')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${graphType === 'both' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>משולב</button>
+                 </div>
+              </div>
+              <div className="flex items-center gap-2">
+                 <div className="text-xs font-bold text-gray-500 flex items-center gap-1"><CalendarDays size={14}/> סיכום כל:</div>
+                 <select 
+                    value={graphTimeframe}
+                    onChange={(e) => setGraphTimeframe(e.target.value as TimeframeType)}
+                    className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-indigo-500"
+                 >
+                    <option value="sessions">סדרים/שיעורים</option>
+                    <option value="days">ימים</option>
+                    <option value="weeks">שבועות</option>
+                    <option value="months">חודשים</option>
+                 </select>
+              </div>
+           </div>
+
+           <div className="h-[300px] w-full mt-4" dir="ltr">
+             {graphData.length === 0 ? (
+                <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm font-medium">אין מספיק נתונים להצגת גרף בתאריכים אלו</div>
+             ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={graphData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorLearning" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorExams" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f97316" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#f97316" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#6b7280' }} dy={10} />
+                    <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#6b7280' }} dx={-10} />
+                    <Tooltip 
+                       contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)', fontSize: '12px', textAlign: 'right' }} 
+                       itemStyle={{ fontWeight: 'bold' }}
+                    />
+                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '12px', fontWeight: 'bold' }}/>
+                    
+                    {(graphType === 'learning' || graphType === 'both') && (
+                       <Area type="monotone" name="רמת למידה (%)" dataKey="learningRate" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorLearning)" activeDot={{ r: 6 }} connectNulls />
+                    )}
+                    {(graphType === 'exams' || graphType === 'both') && (
+                       <Area type="monotone" name="ממוצע מבחנים (%)" dataKey="examAverage" stroke="#f97316" strokeWidth={3} fillOpacity={1} fill="url(#colorExams)" activeDot={{ r: 6 }} connectNulls />
+                    )}
+                  </AreaChart>
+                </ResponsiveContainer>
+             )}
+           </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <Card className="flex flex-col items-center justify-center p-6 text-center shadow-sm">

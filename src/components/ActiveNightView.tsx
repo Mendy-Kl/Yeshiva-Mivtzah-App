@@ -21,12 +21,17 @@ export function ActiveNightView({ nightId, onClose }: { nightId: string, onClose
     .sort((a, b) => a.shiur.localeCompare(b.shiur) || a.name.localeCompare(b.name));
 
   const groupedStudents = participatingStudents.reduce((acc, student) => {
-    if (!acc[student.shiur]) acc[student.shiur] = [];
-    acc[student.shiur].push(student);
+    const roomKey = student.room ? `חדר ${student.room}` : 'ללא חדר';
+    if (!acc[roomKey]) acc[roomKey] = [];
+    acc[roomKey].push(student);
     return acc;
   }, {} as Record<string, typeof participatingStudents>);
 
-  const sortedShiurKeys = Object.keys(groupedStudents).sort((a, b) => a.localeCompare(b));
+  const sortedRoomKeys = Object.keys(groupedStudents).sort((a, b) => {
+    if (a === 'ללא חדר') return 1;
+    if (b === 'ללא חדר') return -1;
+    return a.localeCompare(b, undefined, {numeric: true});
+  });
 
   const handleUpdate = (studentId: string, updates: Partial<StudentNightRecord>) => {
     updateNightRecord(nightId, studentId, updates);
@@ -99,11 +104,11 @@ export function ActiveNightView({ nightId, onClose }: { nightId: string, onClose
       </Card>
 
       <div className="grid grid-cols-1 gap-6 items-start">
-        {sortedShiurKeys.map(shiurKey => {
-          const studentsInShiur = groupedStudents[shiurKey];
+        {sortedRoomKeys.map(roomKey => {
+          const studentsInRoom = groupedStudents[roomKey];
           return (
-            <div key={shiurKey} className="flex flex-col gap-3">
-              <h2 className="text-xl font-bold px-2">שיעור {shiurKey}</h2>
+            <div key={roomKey} className="flex flex-col gap-3">
+              <h2 className="text-xl font-bold px-2 text-indigo-950">{roomKey}</h2>
               <Card className="p-0 bg-white shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] border border-black/[0.02]">
                 <div className="overflow-x-auto">
                   <table className="w-full text-right" dir="rtl">
@@ -117,7 +122,7 @@ export function ActiveNightView({ nightId, onClose }: { nightId: string, onClose
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-black/5">
-                      {studentsInShiur.map(student => {
+                      {studentsInRoom.map(student => {
                         const record = night.records[student.id] || {};
                         
                         return (

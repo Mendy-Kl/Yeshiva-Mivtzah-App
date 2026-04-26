@@ -11,12 +11,14 @@ interface DateRange {
 interface DateRangePickerProps {
   value: DateRange;
   onChange: (range: DateRange) => void;
+  placeholder?: string;
+  className?: string;
 }
 
 const WEEKDAYS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 const HEBREW_DAYS = ['', 'א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ז׳', 'ח׳', 'ט׳', 'י׳', 'י״א', 'י״ב', 'י״ג', 'י״ד', 'ט״ו', 'ט״ז', 'י״ז', 'י״ח', 'י״ט', 'כ׳', 'כ״א', 'כ״ב', 'כ״ג', 'כ״ד', 'כ״ה', 'כ״ו', 'כ״ז', 'כ״ח', 'כ״ט', 'ל׳'];
 
-export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
+export function DateRangePicker({ value, onChange, placeholder = 'סנן לפי תאריכים', className = '' }: DateRangePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<'hebrew' | 'gregorian'>('hebrew');
   const [viewDate, setViewDate] = useState(new Date());
@@ -187,9 +189,9 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
     return (
       <div className="mt-4">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={(e) => { e.stopPropagation(); nextMonth(); }} className="p-1 hover:bg-slate-100 rounded-full"><ChevronRight size={16} /></button>
+          <button onClick={(e) => { e.stopPropagation(); prevMonth(); }} className="p-1 hover:bg-slate-100 rounded-full"><ChevronRight size={16} /></button>
           <div className="font-bold text-slate-800 text-sm">{title}</div>
-          <button onClick={(e) => { e.stopPropagation(); prevMonth(); }} className="p-1 hover:bg-slate-100 rounded-full"><ChevronLeft size={16} /></button>
+          <button onClick={(e) => { e.stopPropagation(); nextMonth(); }} className="p-1 hover:bg-slate-100 rounded-full"><ChevronLeft size={16} /></button>
         </div>
         
         <div className="grid grid-cols-7 gap-1 text-center mb-2">
@@ -206,21 +208,23 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
   };
 
   return (
-    <div className="relative" ref={popoverRef}>
+    <div className={`relative ${className}`} ref={popoverRef}>
       <div 
         role="button"
         tabIndex={0}
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 bg-white/80 backdrop-blur px-3 py-2 rounded-lg border border-orange-200/50 shadow-sm text-sm font-semibold text-orange-950 cursor-pointer hover:bg-orange-50/50 transition-colors w-full lg:w-fit min-w-[200px]"
+        className="flex items-center justify-between gap-2 bg-white backdrop-blur px-3 py-2 rounded-xl border border-gray-200 shadow-sm text-sm font-semibold text-gray-800 cursor-pointer hover:bg-gray-50 transition-all w-full min-w-[200px]"
       >
-        <CalendarIcon size={14} className="text-orange-900/60 shrink-0" />
-        <div className="flex-1 whitespace-nowrap text-right lg:text-center overflow-hidden text-ellipsis">
-        {value.start ? (
-          <span>
-            {getHebrewDateOnly(value.start.toISOString())} 
-            {(value.end && value.end.getTime() !== value.start.getTime()) ? ` - ${getHebrewDateOnly(value.end.toISOString())}` : ''}
-          </span>
-        ) : 'סנן לפי תאריכים'}
+        <div className="flex items-center gap-2 flex-1">
+          <CalendarIcon size={16} className="text-gray-400 shrink-0" />
+          <div className="flex-1 whitespace-nowrap text-right lg:text-center overflow-hidden text-ellipsis">
+          {value.start ? (
+            <span>
+              {getHebrewDateOnly(value.start.toISOString())} 
+              {(value.end && value.end.getTime() !== value.start.getTime()) ? ` - ${getHebrewDateOnly(value.end.toISOString())}` : ''}
+            </span>
+          ) : placeholder}
+          </div>
         </div>
         {value.start && (
           <div 
@@ -235,33 +239,36 @@ export function DateRangePicker({ value, onChange }: DateRangePickerProps) {
       </div>
 
       {isOpen && (
-        <div className="absolute top-full right-0 mt-2 z-[999] bg-white rounded-xl shadow-xl border border-gray-100 p-4 w-72 animate-in fade-in zoom-in duration-150" dir="rtl">
-          <div className="flex items-center bg-slate-100 p-1 rounded-lg">
-            <button 
-              onClick={() => setMode('hebrew')} 
-              className={`flex-1 text-sm py-1.5 font-medium rounded-md transition-colors ${mode === 'hebrew' ? 'bg-white shadow-sm text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              עברי
-            </button>
-            <button 
-              onClick={() => setMode('gregorian')} 
-              className={`flex-1 text-sm py-1.5 font-medium rounded-md transition-colors ${mode === 'gregorian' ? 'bg-white shadow-sm text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              לועזי
-            </button>
+        <>
+          <div className="fixed inset-0 bg-black/20 z-[990] animate-in fade-in duration-150" onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[999] max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-gray-100 p-5 w-[320px] sm:w-[360px] animate-in fade-in zoom-in duration-150 max-h-[90vh] overflow-y-auto" dir="rtl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center bg-slate-100 p-1 rounded-lg mb-2">
+              <button 
+                onClick={() => setMode('hebrew')} 
+                className={`flex-1 text-sm py-1.5 font-medium rounded-md transition-colors ${mode === 'hebrew' ? 'bg-white shadow-sm text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                עברי
+              </button>
+              <button 
+                onClick={() => setMode('gregorian')} 
+                className={`flex-1 text-sm py-1.5 font-medium rounded-md transition-colors ${mode === 'gregorian' ? 'bg-white shadow-sm text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                לועזי
+              </button>
+            </div>
+            
+            {renderGrid()}
+            
+            <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
+              <button 
+                onClick={(e) => { e.stopPropagation(); onChange(tempValue); setIsOpen(false); }}
+                className="px-6 py-2 bg-orange-600 outline-none hover:bg-orange-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
+              >
+                שמור בחירה
+               </button>
+            </div>
           </div>
-          
-          {renderGrid()}
-          
-          <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end">
-            <button 
-              onClick={(e) => { e.stopPropagation(); onChange(tempValue); setIsOpen(false); }}
-              className="px-4 py-1.5 bg-orange-600 outline-none hover:bg-orange-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
-            >
-              מאשר
-            </button>
-          </div>
-        </div>
+        </>
       )}
     </div>
   );

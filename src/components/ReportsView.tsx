@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../AppContext';
 import { Card } from './ui';
-import { Filter, Search, BarChart3, TrendingUp, Presentation, Calendar, CalendarDays } from 'lucide-react';
+import { Filter, Search, BarChart3, TrendingUp, Presentation, Calendar, CalendarDays, X } from 'lucide-react';
 import { StudentProfileView } from './StudentProfileView';
 import { DateRangePicker } from './DateRangePicker';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
@@ -35,8 +35,10 @@ type GraphType = 'learning' | 'exams' | 'both';
 type TimeframeType = 'sessions' | 'days' | 'weeks' | 'months';
 
 export function ReportsView() {
-  const { students, lessons, shiurim, subjects, exams } = useAppStore();
+  const { students, lessons, shiurim, subjects, exams, subjectClasses } = useAppStore();
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
+  const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
+  const [classModalSubject, setClassModalSubject] = useState<string | null>(null);
   const [selectedShiurim, setSelectedShiurim] = useState<string[]>([]); // empty means all
   const [searchTerm, setSearchTerm] = useState('');
   const [activeStudentId, setActiveStudentId] = useState<string | null>(null);
@@ -108,6 +110,12 @@ export function ReportsView() {
   const filteredRecords = useMemo(() => {
     return flatRecords.filter(r => {
       if (selectedSubject !== 'all' && r.subject !== selectedSubject) return false;
+      if (selectedSubject !== 'all' && selectedClasses.length > 0) {
+        const s = students.find(s => s.id === r.studentId);
+        if (!s) return false;
+        const sLevel = (s.subjectLevels || {})[selectedSubject];
+        if (!sLevel || !selectedClasses.includes(sLevel)) return false;
+      }
       if (selectedShiurim.length > 0 && !selectedShiurim.includes(r.shiur)) return false;
       if (searchTerm && !r.studentName.toLowerCase().includes(searchTerm.toLowerCase())) return false;
       if (dateRange.start) {
@@ -145,6 +153,12 @@ export function ReportsView() {
   const filteredExamRecords = useMemo(() => {
     return flatExamRecords.filter(r => {
       if (selectedSubject !== 'all' && r.subject !== selectedSubject) return false;
+      if (selectedSubject !== 'all' && selectedClasses.length > 0) {
+        const s = students.find(s => s.id === r.studentId);
+        if (!s) return false;
+        const sLevel = (s.subjectLevels || {})[selectedSubject];
+        if (!sLevel || !selectedClasses.includes(sLevel)) return false;
+      }
       if (selectedShiurim.length > 0 && !selectedShiurim.includes(r.shiur)) return false;
       if (searchTerm && !r.studentName.toLowerCase().includes(searchTerm.toLowerCase())) return false;
       if (dateRange.start) {
@@ -186,6 +200,13 @@ export function ReportsView() {
     return students
       .filter(s => selectedShiurim.length === 0 || selectedShiurim.includes(s.shiur))
       .filter(s => !searchTerm || s.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      .filter(s => {
+        if (selectedSubject !== 'all' && selectedClasses.length > 0) {
+          const sLevel = (s.subjectLevels || {})[selectedSubject];
+          if (!sLevel || !selectedClasses.includes(sLevel)) return false;
+        }
+        return true;
+      })
       .map(s => {
         const sRecs = filteredRecords.filter(r => r.studentId === s.id);
         const sExamRecs = filteredExamRecords.filter(r => r.studentId === s.id);
@@ -278,15 +299,73 @@ export function ReportsView() {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 <button 
-                  onClick={() => setSelectedSubject('all')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${selectedSubject === 'all' ? 'bg-[var(--color-primary)] text-orange-900 border border-orange-500 shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                  onClick={() => {
+                    if (selectedSubject !== 'all') setSelectedClasses([]);
+                    setSelectedSubject('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${selectedSubject === 'all' ? 'bg-[var(--color-primary)] text-orange-900 border border-orange-500 shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
                 >כל המקצועות</button>
                 {subjects.map(subj => (
-                  <button 
-                    key={subj}
-                    onClick={() => setSelectedSubject(subj)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${selectedSubject === subj ? 'bg-[var(--color-primary)] text-orange-900 border border-orange-500 shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                  >{subj}</button>
+                  <div key={subj} className="relative">
+                    <button 
+                      onClick={() => {
+                        if (selectedSubject === subj) {
+                          if (subjectClasses[subj] && subjectClasses[subj].length > 0) {
+                            setClassModalSubject(classModalSubject === subj ? null : subj);
+                          }
+                        } else {
+                          setSelectedClasses([]);
+                          setSelectedSubject(subj);
+                          setClassModalSubject(null);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${selectedSubject === subj ? 'bg-[var(--color-primary)] text-orange-900 border border-orange-500 shadow-sm' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      {subj} {selectedSubject === subj && selectedClasses.length > 0 && `(${selectedClasses.length})`}
+                    </button>
+                    
+                    {classModalSubject === subj && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-40" 
+                          onClick={(e) => { e.stopPropagation(); setClassModalSubject(null); }} 
+                        />
+                        <div className="absolute top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 z-50 p-2 start-0 animate-in fade-in zoom-in-95 duration-100">
+                          <div className="flex justify-between items-center mb-2 px-1">
+                           <span className="text-xs font-bold text-gray-500">סינון רמות</span>
+                           <button onClick={(e) => { e.stopPropagation(); setClassModalSubject(null); }} className="text-gray-400 hover:text-gray-600 cursor-pointer"><X size={14}/></button>
+                        </div>
+                        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                          {(subjectClasses[subj] || []).map(cls => (
+                            <button
+                              key={cls}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedClasses(prev => 
+                                  prev.includes(cls) ? prev.filter(c => c !== cls) : [...prev, cls]
+                                );
+                              }}
+                              className={`text-right px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${selectedClasses.includes(cls) ? 'bg-[var(--color-primary)] text-orange-900 shadow-sm' : 'hover:bg-gray-50 text-gray-600'}`}
+                            >
+                              {cls}
+                            </button>
+                          ))}
+                          {(subjectClasses[subj] || []).length === 0 && (
+                            <p className="text-xs text-gray-500 p-1">לא הוגדרו רמות למקצוע זה.</p>
+                          )}
+                        </div>
+                        {selectedClasses.length > 0 && (
+                           <button
+                             onClick={(e) => { e.stopPropagation(); setSelectedClasses([]); setClassModalSubject(null); }}
+                             className="w-full mt-2 text-xs text-center text-gray-500 hover:text-gray-700 py-1 transition-colors cursor-pointer"
+                           >
+                             נקה הכל
+                           </button>
+                        )}
+                      </div>
+                      </>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -543,6 +622,9 @@ export function ReportsView() {
           );
         })}
       </div>
+
+
+
     </div>
   );
 }

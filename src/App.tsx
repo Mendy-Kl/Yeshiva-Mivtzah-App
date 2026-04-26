@@ -102,7 +102,7 @@ function AppContent() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-4 md:p-6 overflow-hidden max-w-full">
+      <main className="flex-1 p-4 md:p-6 overflow-y-auto overflow-x-hidden max-w-full">
         {currentView === 'home' && <HomeView onStart={setActiveLessonId} onStartNight={setActiveNightId} onNavigate={setCurrentView} />}
         {currentView === 'mivtza' && <MivtzaView />}
         {currentView === 'exams' && <ExamsView />}

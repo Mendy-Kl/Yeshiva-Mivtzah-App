@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../AppContext';
 import { Card } from './ui';
 import { formatHebrewDate, getHebrewDateOnly } from '../lib/dateUtils';
@@ -21,8 +21,10 @@ export function GeneralMatrixView() {
   const [filterSubject, setFilterSubject] = useState<string>('all');
   const [dateRange, setDateRange] = useState<{start: Date | null, end: Date | null}>({ start: null, end: null });
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+
   // Close active note by clicking anywhere outside
-  React.useEffect(() => {
+  useEffect(() => {
     const handleGlobalClick = () => setActiveNoteId(null);
     if (activeNoteId) {
       window.addEventListener('click', handleGlobalClick);
@@ -97,6 +99,23 @@ export function GeneralMatrixView() {
     };
   }, [lessons, nightRegistrations, filterSubject, dateRange]);
 
+  // Scroll to the end of the table
+  useEffect(() => {
+    if (scrollRef.current) {
+      const container = scrollRef.current;
+      // Timeout ensures we scroll after the component paints the updated DOM and col-widths
+      setTimeout(() => {
+        if (!container) return;
+        // In RTL scrolling left means moving to negative space in standard modern browsers
+        container.scrollLeft = -container.scrollWidth;
+        // fallback if negative scroll value not accepted
+        if (container.scrollLeft === 0 && container.scrollWidth > container.clientWidth) {
+          container.scrollLeft = container.scrollWidth;
+        }
+      }, 50);
+    }
+  }, [events.allEvents.length]);
+
   const studentsByShiur = useMemo(() => {
     const groups: Record<string, Student[]> = {};
     const filteredStudents = filterShiur === 'all' ? students : students.filter(s => s.shiur === filterShiur);
@@ -140,7 +159,7 @@ export function GeneralMatrixView() {
           className="absolute top-[80%] left-1/2 -translate-x-1/2 z-[999] bg-white border border-orange-200 shadow-xl rounded-lg p-3 w-56 animate-in fade-in zoom-in duration-150 cursor-auto"
           onClick={e => e.stopPropagation()}
         >
-           <h4 className="font-bold text-gray-800 text-[13px] leading-tight mb-1" dir="rtl">{ev.label} • {getHebrewDateOnly(ev.data.date)}</h4>
+           <h4 className="font-bold text-gray-800 text-[13px] leading-tight mb-1" dir="rtl">{ev.label} • {getHebrewDateOnly(ev.dataList[0].date)}</h4>
            <div className="text-gray-600 text-[12px] whitespace-pre-wrap leading-relaxed max-h-[150px] overflow-y-auto custom-scrollbar" dir="rtl">
              {allNotes}
            </div>
@@ -248,7 +267,7 @@ export function GeneralMatrixView() {
           className="absolute top-[80%] left-1/2 -translate-x-1/2 z-[999] bg-white border border-indigo-200 shadow-xl rounded-lg p-3 w-56 animate-in fade-in zoom-in duration-150 cursor-auto"
           onClick={e => e.stopPropagation()}
         >
-           <h4 className="font-bold text-gray-800 text-[13px] leading-tight mb-1" dir="rtl">{ev.label} • {getHebrewDateOnly(ev.data.date)}</h4>
+           <h4 className="font-bold text-gray-800 text-[13px] leading-tight mb-1" dir="rtl">{ev.label} • {getHebrewDateOnly(ev.dataList[0].date)}</h4>
            <div className="text-gray-600 text-[12px] whitespace-pre-wrap leading-relaxed max-h-[150px] overflow-y-auto custom-scrollbar" dir="rtl">
              {allNotes}
            </div>
@@ -328,7 +347,7 @@ export function GeneralMatrixView() {
       </Card>
 
       <Card className="p-0 overflow-hidden bg-white shadow-sm border border-black/5 rounded-xl">
-        <div className="overflow-auto max-h-[calc(100vh-250px)]" dir="rtl">
+        <div ref={scrollRef} className="overflow-auto max-h-[calc(100vh-250px)]" dir="rtl">
           {events.allEvents.length === 0 ? (
             <div className="p-12 text-center text-slate-500 text-sm font-medium bg-white">
               {filterSubject !== 'all' ? 'לא נמצאו שיעורים התואמים את המקצוע שבחרת.' : 'אין עדיין רישומים במערכת להצגה.'}
@@ -422,8 +441,8 @@ export function GeneralMatrixView() {
                               <td key={`${dayKey}-${i}`} className={`p-0 border-b border-gray-100/60 bg-white align-middle w-[110px] min-w-[110px] max-w-[110px] relative ${borderLeft}`}>
                                 {ev.type === 'lesson' 
                                   // Pass single dataItem wrapping inside generic TimelineEvent format to reuse existing renderers without big changes
-                                  ? renderLessonCell(record, { type: ev.type, data: dataItem, time: ev.time, label: ev.label } as any, student) 
-                                  : renderNightCell(record, { type: ev.type, data: dataItem, time: ev.time, label: ev.label } as any, student)}
+                                  ? renderLessonCell(record, { type: ev.type, dataList: [dataItem], time: ev.time, label: ev.label } as any, student) 
+                                  : renderNightCell(record, { type: ev.type, dataList: [dataItem], time: ev.time, label: ev.label } as any, student)}
                               </td>
                             );
                           });

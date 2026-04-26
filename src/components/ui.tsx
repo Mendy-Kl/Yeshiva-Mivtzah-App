@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { cn } from '../utils';
 
 export function Card({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -42,17 +42,152 @@ export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInp
   );
 }
 
-export function Badge({ children, variant = 'gray' }: { children: React.ReactNode, variant?: 'gray' | 'success' | 'warning' | 'danger' | 'primary' }) {
+export function Badge({ children, variant = 'gray', className }: { children: React.ReactNode, variant?: 'gray' | 'success' | 'warning' | 'danger' | 'primary' | 'secondary', className?: string }) {
   const variants = {
     gray: 'bg-gray-100 text-gray-700',
+    secondary: 'bg-indigo-50 text-indigo-700',
     success: 'bg-[#dcfce7] text-[var(--color-success)]',
     warning: 'bg-[#fef3c7] text-[var(--color-warning)]',
     danger: 'bg-[#fee2e2] text-[var(--color-danger)]',
     primary: 'bg-[var(--color-primary)] text-[var(--color-text-main)]'
   }
   return (
-    <span className={cn("px-3 py-1 text-xs font-semibold rounded-full", variants[variant])}>
+    <span className={cn("px-3 py-1 text-xs font-semibold rounded-full", variants[variant], className)}>
       {children}
     </span>
+  );
+}
+
+export interface TimeInputProps {
+  value: string;
+  onChange: (val: string) => void;
+  className?: string;
+}
+
+export function TimeInput({ value, onChange, className }: TimeInputProps) {
+  const idValue = React.useId();
+  const hourId = `time-input-hour-${idValue}`;
+  const minId = `time-input-min-${idValue}`;
+
+  // value is expected to be "HH:mm" or ""
+  const h = value ? value.split(':')[0] : '';
+  const m = value ? value.split(':')[1] : '';
+
+  const [hour, setHour] = useState(h);
+  const [minute, setMinute] = useState(m);
+
+  useEffect(() => {
+    if (value) {
+      setHour(value.split(':')[0]);
+      setMinute(value.split(':')[1]);
+    } else {
+      setHour('');
+      setMinute('');
+    }
+  }, [value]);
+
+  const updateValue = (newH: string, newM: string) => {
+    if (!newH && !newM) {
+      onChange('');
+      return;
+    }
+    // Only pass up valid complete times
+    if (newH.length === 2 && newM.length === 2) {
+      onChange(`${newH}:${newM}`);
+    } else {
+      onChange('');
+    }
+  };
+
+  const handleHourChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/\D/g, '');
+    if (val.length > 2) val = val.slice(0, 2);
+    if (val.length === 2 && parseInt(val) > 23) val = '23';
+    
+    setHour(val);
+    updateValue(val, minute);
+
+    // Auto focus next input
+    if (val.length === 2) {
+      const nextInput = document.getElementById(minId) as HTMLInputElement;
+      if (nextInput) {
+        nextInput.focus();
+        nextInput.select();
+      }
+    }
+  };
+
+  const handleMinuteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/\D/g, '');
+    if (val.length > 2) val = val.slice(0, 2);
+    if (val.length === 2 && parseInt(val) > 59) val = '59';
+    
+    setMinute(val);
+    updateValue(hour, val);
+  };
+
+  const handleHourBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const currentVal = e.target.value;
+    if (currentVal && currentVal.length === 1) {
+      const val = `0${currentVal}`;
+      setHour(val);
+      updateValue(val, minute);
+    }
+  };
+
+  const handleMinuteBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const currentVal = e.target.value;
+    if (currentVal && currentVal.length === 1) {
+      const val = `0${currentVal}`;
+      setMinute(val);
+      updateValue(hour, val);
+    }
+  };
+
+  const overrideKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, isHour: boolean) => {
+    if (e.key === 'Backspace') {
+       if (isHour && hour === '') {
+          // do nothing
+       } else if (!isHour && minute === '') {
+          const prevInput = document.getElementById(hourId) as HTMLInputElement;
+          if (prevInput) {
+             prevInput.focus();
+          }
+       }
+    }
+  };
+
+  return (
+    <div className={cn("flex flex-1 items-center bg-white border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[var(--color-primary)] transition-all overflow-hidden px-3", className)} dir="rtl">
+      <div className="flex items-center w-full justify-center" dir="ltr">
+        <input
+          id={hourId}
+          type="text"
+          inputMode="numeric"
+          dir="ltr"
+          className="w-[40px] py-1.5 bg-transparent outline-none text-center font-mono text-[16px] tracking-widest placeholder-gray-400"
+          placeholder="22"
+          value={hour}
+          onChange={handleHourChange}
+          onBlur={handleHourBlur}
+          onKeyDown={(e) => overrideKeyDown(e, true)}
+          maxLength={2}
+        />
+        <span className="text-gray-500 font-extrabold pb-1">:</span>
+        <input
+          id={minId}
+          type="text"
+          inputMode="numeric"
+          dir="ltr"
+          className="w-[40px] py-1.5 bg-transparent outline-none text-center font-mono text-[16px] tracking-widest placeholder-gray-400"
+          placeholder="00"
+          value={minute}
+          onChange={handleMinuteChange}
+          onBlur={handleMinuteBlur}
+          onKeyDown={(e) => overrideKeyDown(e, false)}
+          maxLength={2}
+        />
+      </div>
+    </div>
   );
 }

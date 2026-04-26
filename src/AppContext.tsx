@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Student, Shiur, Lesson, StudentLessonRecord, Exam, ExamGrade, NightRegistration, StudentNightRecord } from './types';
+import { Student, Shiur, Lesson, StudentLessonRecord, Exam, ExamGrade, NightRegistration, StudentNightRecord, Treatment, PlannedAbsence } from './types';
 import { auth, db, login, logout } from './firebase';
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { useAuthState } from 'react-firebase-hooks/auth';
@@ -8,15 +8,24 @@ interface AppState {
   students: Student[];
   shiurim: Shiur[];
   subjects: string[];
+  rooms: string[];
+  subjectClasses: Record<string, string[]>;
   lessons: Lesson[];
   exams: Exam[];
   nightRegistrations: NightRegistration[];
+  treatments: Treatment[];
+  plannedAbsences: PlannedAbsence[];
   addStudent: (name: string, shiur: Shiur) => void;
+  updateStudent: (id: string, updates: Partial<Student>) => void;
   removeStudent: (id: string) => void;
   addShiur: (s: Shiur) => void;
   removeShiur: (s: Shiur) => void;
   addSubject: (s: string) => void;
   removeSubject: (s: string) => void;
+  addRoom: (r: string) => void;
+  removeRoom: (r: string) => void;
+  addSubjectClass: (subject: string, className: string) => void;
+  removeSubjectClass: (subject: string, className: string) => void;
   startLesson: (subject: string, shiurim: Shiur[]) => string;
   updateLessonRecord: (lessonId: string, studentId: string, updates: Partial<StudentLessonRecord>) => void;
   finishLesson: (lessonId: string) => void;
@@ -28,6 +37,10 @@ interface AppState {
   updateNightRecord: (nightId: string, studentId: string, updates: Partial<StudentNightRecord>) => void;
   finishNightRegistration: (nightId: string) => void;
   deleteNightRegistration: (nightId: string) => void;
+  addTreatment: (t: Omit<Treatment, 'id'>) => Promise<void>;
+  deleteTreatment: (id: string) => Promise<void>;
+  addPlannedAbsence: (a: Omit<PlannedAbsence, 'id'>) => Promise<void>;
+  deletePlannedAbsence: (id: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -39,9 +52,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [students, setStudents] = useState<Student[]>([]);
   const [shiurim, setShiurim] = useState<Shiur[]>([]);
   const [subjects, setSubjects] = useState<string[]>([]);
+  const [rooms, setRooms] = useState<string[]>([]);
+  const [subjectClasses, setSubjectClasses] = useState<Record<string, string[]>>({});
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [nightRegistrations, setNightRegistrations] = useState<NightRegistration[]>([]);
+  const [treatments, setTreatments] = useState<Treatment[]>([]);
+  const [plannedAbsences, setPlannedAbsences] = useState<PlannedAbsence[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -68,11 +85,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setNightRegistrations(snap.docs.map(d => ({ ...(d.data() as any), id: d.id } as NightRegistration)));
     });
 
+    const qTreatments = query(collection(db, `users/${userId}/treatments`), where('ownerId', '==', userId));
+    const unsubTreatments = onSnapshot(qTreatments, snap => {
+      setTreatments(snap.docs.map(d => ({ ...(d.data() as any), id: d.id } as Treatment)));
+    });
+
+    const qPlannedAbsences = query(collection(db, `users/${userId}/plannedAbsences`), where('ownerId', '==', userId));
+    const unsubPlannedAbsences = onSnapshot(qPlannedAbsences, snap => {
+      setPlannedAbsences(snap.docs.map(d => ({ ...(d.data() as any), id: d.id } as PlannedAbsence)));
+    });
+
     const unsubSettings = onSnapshot(doc(db, `users/${userId}/settings/global`), snap => {
       if (snap.exists()) {
         const data = snap.data();
         setShiurim(data.shiurim || []);
         setSubjects(data.subjects || []);
+        setRooms(data.rooms || []);
+        setSubjectClasses(data.subjectClasses || {});
       } else {
         // If settings doc doesn't exist, try local migration
         migrateLocalData(userId);
@@ -84,6 +113,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       unsubLessons();
       unsubExams();
       unsubNights();
+      unsubTreatments();
+      unsubPlannedAbsences();
       unsubSettings();
     };
   }, [user]);
@@ -132,12 +163,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateSettings = async (newShiurim: string[], newSubjects: string[]) => {
+  const updateSettings = async (newShiurim: string[], newSubjects: string[], newRooms: string[] = rooms, newSubjectClasses: Record<string, string[]> = subjectClasses) => {
     if (!user) return;
     const ref = doc(db, `users/${user.uid}/settings/global`);
     await setDoc(ref, {
       shiurim: newShiurim,
       subjects: newSubjects,
+      rooms: newRooms,
+      subjectClasses: newSubjectClasses,
       ownerId: user.uid,
       updatedAt: Date.now()
     }, { merge: true });
@@ -151,6 +184,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       shiur,
       ownerId: user.uid,
       createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+  };
+
+  const updateStudent = async (id: string, updates: Partial<Student>) => {
+    if (!user) return;
+    await updateDoc(doc(db, `users/${user.uid}/students/${id}`), {
+      ...updates,
       updatedAt: Date.now()
     });
   };
@@ -177,23 +218,82 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const removeSubject = async (s: string) => {
-    await updateSettings(shiurim, subjects.filter(subj => subj !== s));
+    const newClasses = { ...subjectClasses };
+    delete newClasses[s];
+    await updateSettings(shiurim, subjects.filter(subj => subj !== s), rooms, newClasses);
+  };
+
+  const addRoom = async (room: string) => {
+    if (!rooms.includes(room)) {
+      await updateSettings(shiurim, subjects, [...rooms, room], subjectClasses);
+    }
+  };
+
+  const removeRoom = async (room: string) => {
+    await updateSettings(shiurim, subjects, rooms.filter(r => r !== room), subjectClasses);
+  };
+
+  const addSubjectClass = async (subject: string, className: string) => {
+    const currentClasses = subjectClasses[subject] || [];
+    if (!currentClasses.includes(className)) {
+      await updateSettings(shiurim, subjects, rooms, { ...subjectClasses, [subject]: [...currentClasses, className] });
+    }
+  };
+
+  const removeSubjectClass = async (subject: string, className: string) => {
+    const currentClasses = subjectClasses[subject] || [];
+    await updateSettings(shiurim, subjects, rooms, { ...subjectClasses, [subject]: currentClasses.filter(c => c !== className) });
   };
 
   const startLesson = (subject: string, selectedShiurim: Shiur[]) => {
     if (!user) return "";
-    const newLesson: Lesson = {
-      id: Date.now().toString(),
-      date: new Date().toISOString(),
+    
+    // Check for planned absences
+    const activeRecords: Record<string, StudentLessonRecord> = {};
+    const now = new Date();
+    const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    const currentDateStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    
+    students.forEach(student => {
+      // Check if student belongs to selected shiurim
+      if (!selectedShiurim.includes(student.shiur)) return;
+
+      const absence = plannedAbsences.find(pa => {
+        if (pa.studentId !== student.id) return false;
+        
+        // Date check
+        if (currentDateStr < pa.fromDate || currentDateStr > pa.toDate) return false;
+        
+        // Time check if defined and we are on the exact bounds
+        if (pa.fromTime && currentDateStr === pa.fromDate && currentTimeStr < pa.fromTime) return false;
+        if (pa.toTime && currentDateStr === pa.toDate && currentTimeStr > pa.toTime) return false;
+        
+        return true;
+      });
+
+      if (absence) {
+        activeRecords[student.id] = {
+          attendance: 'ABSENT',
+          isAbsent: true,
+          isAuthorizedAbsence: true,
+          absenceNote: absence.reason,
+          behavior1: null,
+          behavior2: null
+        };
+      }
+    });
+
+    const id = Date.now().toString();
+    const newLesson: Omit<Lesson, 'id'> = {
+      date: now.toISOString(),
       subject,
       shiurim: selectedShiurim,
-      records: {},
+      records: activeRecords,
       isActive: true,
     };
     
-    const { id, ...lessonData } = newLesson;
     setDoc(doc(db, `users/${user.uid}/lessons/${id}`), {
-      ...lessonData,
+      ...newLesson,
       ownerId: user.uid,
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -271,11 +371,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const startNightRegistration = (selectedShiurim: Shiur[]) => {
     if (!user) return "";
+    
+    // Check for planned absences
+    const activeRecords: Record<string, StudentNightRecord> = {};
+    const now = new Date();
+    const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    const currentDateStr = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    
+    students.forEach(student => {
+      // Check if student belongs to selected shiurim
+      if (!selectedShiurim.includes(student.shiur)) return;
+
+      const absence = plannedAbsences.find(pa => {
+        if (pa.studentId !== student.id) return false;
+        
+        // Date check
+        if (currentDateStr < pa.fromDate || currentDateStr > pa.toDate) return false;
+        
+        // Time check if defined and we are on the exact bounds
+        if (pa.fromTime && currentDateStr === pa.fromDate && currentTimeStr < pa.fromTime) return false;
+        if (pa.toTime && currentDateStr === pa.toDate && currentTimeStr > pa.toTime) return false;
+        
+        return true;
+      });
+
+      if (absence) {
+        activeRecords[student.id] = {
+          isRoomAbsent: true,
+          notes: absence.reason
+        };
+      }
+    });
+
     const id = Date.now().toString();
     setDoc(doc(db, `users/${user.uid}/nightRegistrations/${id}`), {
-      date: new Date().toISOString(),
+      date: now.toISOString(),
       shiurim: selectedShiurim,
-      records: {},
+      records: activeRecords,
       isActive: true,
       ownerId: user.uid,
       createdAt: Date.now(),
@@ -324,6 +456,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await deleteDoc(doc(db, `users/${user.uid}/nightRegistrations/${nightId}`));
   };
 
+  const addTreatment = async (t: Omit<Treatment, 'id'>) => {
+    if (!user) return;
+    const id = Date.now().toString();
+    await setDoc(doc(db, `users/${user.uid}/treatments/${id}`), {
+      ...t,
+      ownerId: user.uid,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+  };
+
+  const deleteTreatment = async (id: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, `users/${user.uid}/treatments/${id}`));
+  };
+
+  const addPlannedAbsence = async (a: Omit<PlannedAbsence, 'id'>) => {
+    if (!user) return;
+    const id = Date.now().toString();
+    await setDoc(doc(db, `users/${user.uid}/plannedAbsences/${id}`), {
+      ...a,
+      ownerId: user.uid,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    });
+  };
+
+  const deletePlannedAbsence = async (id: string) => {
+    if (!user) return;
+    await deleteDoc(doc(db, `users/${user.uid}/plannedAbsences/${id}`));
+  };
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div></div>;
   }
@@ -351,12 +515,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      students, shiurim, subjects, lessons, exams, nightRegistrations,
-      addStudent, removeStudent, addShiur, removeShiur,
-      addSubject, removeSubject,
+      students, shiurim, subjects, rooms, subjectClasses, lessons, exams, nightRegistrations, treatments, plannedAbsences,
+      addStudent, updateStudent, removeStudent, addShiur, removeShiur,
+      addSubject, removeSubject, addRoom, removeRoom, addSubjectClass, removeSubjectClass,
       startLesson, updateLessonRecord, finishLesson, deleteLesson,
       addExam, updateExamGrade, deleteExam, 
       startNightRegistration, updateNightRecord, finishNightRegistration, deleteNightRegistration,
+      addTreatment, deleteTreatment, addPlannedAbsence, deletePlannedAbsence,
       logout
     }}>
       {children}

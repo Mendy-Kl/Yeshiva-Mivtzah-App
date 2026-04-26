@@ -4,6 +4,9 @@ export interface Student {
   id: string;
   name: string;
   shiur: Shiur;
+  room?: string;
+  subjectLevels?: Record<string, string>;
+  chavrusas?: Record<string, string>;
 }
 
 export type Attendance = 'ON_TIME' | 'LATE' | 'ABSENT' | null;
@@ -43,12 +46,31 @@ export interface Exam {
   grades: Record<string, ExamGrade>; // mapping studentId to their grade
 }
 
+export interface PlannedAbsence {
+  id: string;
+  studentId: string;
+  fromDate: string;
+  toDate: string;
+  fromTime?: string;
+  toTime?: string;
+  reason: string;
+}
+
 export interface StudentNightRecord {
   roomMinutesLate?: number; // 0 or undefined means on time (if not absent)
   isRoomAbsent?: boolean;
   hamapilMinutesLate?: number; // 0 or undefined means on time
   talking?: boolean; // talking during sleep time
   notes?: string;
+}
+
+export interface Treatment {
+  id: string;
+  studentId: string;
+  date: string;
+  handler: string;
+  issue: string;
+  treatment: string;
 }
 
 export interface NightRegistration {

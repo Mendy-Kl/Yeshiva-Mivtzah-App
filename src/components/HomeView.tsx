@@ -1,16 +1,27 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../AppContext';
-import { Card, Button, Input, Badge } from './ui';
-import { PlayCircle, Users, BookOpen, BarChart3, Search, ChevronLeft, Moon } from 'lucide-react';
+import { Card, Button, Input, Badge, TimeInput } from './ui';
+import { PlayCircle, Users, BookOpen, BarChart3, Search, ChevronLeft, Moon, ChevronDown, Check } from 'lucide-react';
 import { Shiur } from '../types';
 import { StudentProfileView } from './StudentProfileView';
 import { formatHebrewDateTime } from '../lib/dateUtils';
+import { DateRangePicker } from './DateRangePicker';
 
 export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: string) => void, onStartNight?: (id: string) => void, onNavigate?: (view: any) => void }) {
-  const { students, shiurim, subjects, lessons, startLesson, nightRegistrations, startNightRegistration } = useAppStore();
+  const { students, shiurim, subjects, lessons, startLesson, nightRegistrations, startNightRegistration, addPlannedAbsence } = useAppStore();
   const [subject, setSubject] = useState('');
   const [selectedShiurim, setSelectedShiurim] = useState<Shiur[]>([]);
-  const [showStartModal, setShowStartModal] = useState<'lesson' | 'night' | null>(null);
+  const [showStartModal, setShowStartModal] = useState<'lesson' | 'night' | 'absence' | null>(null);
+  
+  // Absence Form State
+  const [absStudentId, setAbsStudentId] = useState('');
+  const [absStudentSearch, setAbsStudentSearch] = useState('');
+  const [showAbsStudentDropdown, setShowAbsStudentDropdown] = useState(false);
+  const [absDateRange, setAbsDateRange] = useState<{start: Date | null, end: Date | null}>({ start: null, end: null });
+  const [absFromTime, setAbsFromTime] = useState('');
+  const [absToTime, setAbsToTime] = useState('');
+  const [absReason, setAbsReason] = useState('');
+  
   const [showHistory, setShowHistory] = useState(false);
   const [showNightHistory, setShowNightHistory] = useState(false);
   const [showStudents, setShowStudents] = useState(false);
@@ -111,9 +122,12 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
           )}
         </div>
 
-        <div className="mt-3 w-full max-w-xl mx-auto relative z-10">
-          <Button size="lg" variant="outline" className="w-full bg-white/60 border-orange-950/20 text-orange-950 font-bold hover:bg-white transition-all shadow-sm text-[15px]" onClick={() => onNavigate && onNavigate('matrix')}>
-            <BarChart3 className="ml-2" size={18} /> פתח טבלת מצב כללי (כל סדרי היום)
+        <div className="mt-3 w-full max-w-xl mx-auto relative z-10 flex flex-col sm:flex-row gap-3">
+          <Button size="lg" variant="outline" className="flex-1 bg-white/60 border-orange-950/20 text-orange-950 font-bold hover:bg-white transition-all shadow-sm text-[15px]" onClick={() => onNavigate && onNavigate('matrix')}>
+            <BarChart3 className="ml-2" size={18} /> תמונת מצב יומית
+          </Button>
+          <Button size="lg" variant="outline" className="flex-1 bg-white/60 border-orange-950/20 text-orange-950 font-bold hover:bg-white transition-all shadow-sm text-[15px]" onClick={() => setShowStartModal('absence')}>
+            <Search className="ml-2" size={18} /> רישום היעדרות
           </Button>
         </div>
       </Card>
@@ -299,6 +313,126 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
             <div className="flex gap-4 mt-4">
               <Button type="submit" size="lg" className="bg-indigo-900 text-white hover:bg-indigo-800 border-none" disabled={selectedShiurim.length === 0}>
                 התחל למלא רישום
+              </Button>
+              <Button type="button" variant="ghost" size="lg" onClick={() => setShowStartModal(null)}>
+                ביטול
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {/* Absence Registration Modal (Embedded) */}
+      {showStartModal === 'absence' && (
+        <Card className="border-2 border-[var(--color-primary)]">
+          <h2 className="text-2xl font-bold mb-6 text-[var(--color-primary)] flex items-center gap-2"><Search size={24} /> רישום היעדרות</h2>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            if (absStudentId && absDateRange.start && absDateRange.end && absReason) {
+              // Format correctly to local YYYY-MM-DD
+              const startStr = new Date(absDateRange.start.getTime() - absDateRange.start.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+              const endStr = new Date(absDateRange.end.getTime() - absDateRange.end.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+              
+              await addPlannedAbsence({
+                studentId: absStudentId,
+                fromDate: startStr,
+                toDate: endStr,
+                fromTime: absFromTime,
+                toTime: absToTime,
+                reason: absReason
+              });
+              setShowStartModal(null);
+              setAbsStudentId('');
+              setAbsStudentSearch('');
+              setAbsDateRange({ start: null, end: null });
+              setAbsReason('');
+              setAbsFromTime('');
+              setAbsToTime('');
+            }
+          }} className="flex flex-col gap-4">
+            
+            <div className="relative">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">תלמיד</label>
+              <div 
+                className="relative bg-white border border-gray-300 rounded-lg p-2 flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-orange-500"
+                onClick={() => setShowAbsStudentDropdown(true)}
+              >
+                <div className="flex-1 flex items-center gap-2">
+                  <Search size={16} className="text-gray-400" />
+                  <input 
+                    type="text" 
+                    placeholder="חיפוש תלמיד..."
+                    value={absStudentSearch}
+                    onChange={(e) => {
+                      setAbsStudentSearch(e.target.value);
+                      setShowAbsStudentDropdown(true);
+                      if (absStudentId && !students.find(s => s.id === absStudentId)?.name.includes(e.target.value)) {
+                        setAbsStudentId('');
+                      }
+                    }}
+                    onFocus={() => setShowAbsStudentDropdown(true)}
+                    className="w-full outline-none bg-transparent"
+                  />
+                </div>
+                <ChevronDown size={18} className="text-gray-400" />
+              </div>
+              
+              {showAbsStudentDropdown && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowAbsStudentDropdown(false)} />
+                  <div className="absolute top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-xl z-50">
+                     {students
+                      .filter(s => !absStudentSearch || s.name.includes(absStudentSearch) || s.shiur.includes(absStudentSearch))
+                      .map(s => (
+                        <div 
+                          key={s.id}
+                          className={`p-3 text-sm cursor-pointer flex items-center justify-between hover:bg-orange-50 transition-colors ${absStudentId === s.id ? 'bg-orange-50 font-bold text-orange-800' : 'text-gray-700'}`}
+                          onClick={() => {
+                            setAbsStudentId(s.id);
+                            setAbsStudentSearch(s.name + ` (שיעור ${s.shiur})`);
+                            setShowAbsStudentDropdown(false);
+                          }}
+                        >
+                          <span>{s.name} <span className="text-gray-400 font-normal">({s.shiur})</span></span>
+                          {absStudentId === s.id && <Check size={16} className="text-orange-600" />}
+                        </div>
+                     ))}
+                     {students.filter(s => !absStudentSearch || s.name.includes(absStudentSearch) || s.shiur.includes(absStudentSearch)).length === 0 && (
+                       <div className="p-3 text-sm text-gray-400 text-center">לא נמצאו תלמידים</div>
+                     )}
+                  </div>
+                </>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">תאריכים</label>
+              <div className="w-full relative">
+                <DateRangePicker value={absDateRange} onChange={setAbsDateRange} placeholder="בחר תאריכים..." className="w-full" />
+              </div>
+            </div>
+
+            {absDateRange.start && absDateRange.end && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">משעה (אופציונלי)</label>
+                  <TimeInput value={absFromTime} onChange={setAbsFromTime} />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">עד שעה (אופציונלי)</label>
+                  <TimeInput value={absToTime} onChange={setAbsToTime} />
+                </div>
+              </div>
+            )}
+            
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">סיבת ההיעדרות</label>
+              <Input type="text" placeholder="לדוגמה: חתונה של אח, תור לרופא..." value={absReason} onChange={e => setAbsReason(e.target.value)} required />
+            </div>
+            
+            <div className="flex gap-4 mt-4">
+              <Button type="submit" size="lg" className="bg-[var(--color-primary)] text-white hover:bg-orange-600 border-none" disabled={!absStudentId || !absReason || !absDateRange.start || !absDateRange.end}>
+                הוסף רישום היעדרות
               </Button>
               <Button type="button" variant="ghost" size="lg" onClick={() => setShowStartModal(null)}>
                 ביטול

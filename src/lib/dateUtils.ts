@@ -26,7 +26,7 @@ export function getHebrewDateOnly(dateStr: string) {
 
 export function formatHebrewDateTime(dateStr: string) {
   const d = new Date(dateStr);
-  const time = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  const time = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false });
   const dateOnly = formatHebrewDate(dateStr);
   return `${dateOnly} ${time}`;
 }

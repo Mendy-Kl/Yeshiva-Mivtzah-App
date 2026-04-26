@@ -18,9 +18,13 @@ service cloud.firestore {
     // Validation Blueprints
     function isValidStudent(data, userId) {
       return data.keys().hasAll(['name', 'shiur', 'ownerId', 'createdAt', 'updatedAt']) 
-        && data.keys().size() == 5
+        && data.keys().size() >= 5
+        && data.keys().size() <= 8
         && data.name is string && data.name.size() > 0 && data.name.size() <= 100
         && data.shiur is string && data.shiur.size() > 0 && data.shiur.size() <= 100
+        && (!('room' in data) || (data.room is string && data.room.size() >= 0 && data.room.size() <= 50))
+        && (!('subjectLevels' in data) || (data.subjectLevels is map && data.subjectLevels.size() <= 50))
+        && (!('chavrusas' in data) || (data.chavrusas is map && data.chavrusas.size() <= 50))
         && data.ownerId == userId
         && data.createdAt is int
         && data.updatedAt is int;
@@ -64,11 +68,40 @@ service cloud.firestore {
         && data.updatedAt is int;
     }
 
+    function isValidTreatment(data, userId) {
+      return data.keys().hasAll(['studentId', 'date', 'handler', 'issue', 'treatment', 'ownerId', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 8
+        && data.studentId is string && data.studentId.size() > 0 && data.studentId.size() <= 128
+        && data.date is string && data.date.size() > 0 && data.date.size() <= 100
+        && data.handler is string && data.handler.size() >= 0 && data.handler.size() <= 200
+        && data.issue is string && data.issue.size() >= 0 && data.issue.size() <= 500
+        && data.treatment is string && data.treatment.size() >= 0 && data.treatment.size() <= 5000
+        && data.ownerId == userId
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    function isValidPlannedAbsence(data, userId) {
+      return data.keys().hasAll(['studentId', 'fromDate', 'toDate', 'reason', 'ownerId', 'createdAt', 'updatedAt'])
+        && data.keys().size() >= 7 && data.keys().size() <= 9
+        && data.studentId is string && data.studentId.size() > 0 && data.studentId.size() <= 128
+        && data.fromDate is string && data.fromDate.size() > 0 && data.fromDate.size() <= 100
+        && data.toDate is string && data.toDate.size() > 0 && data.toDate.size() <= 100
+        && (!('fromTime' in data) || (data.fromTime is string && data.fromTime.size() >= 0 && data.fromTime.size() <= 10))
+        && (!('toTime' in data) || (data.toTime is string && data.toTime.size() >= 0 && data.toTime.size() <= 10))
+        && data.reason is string && data.reason.size() >= 0 && data.reason.size() <= 500
+        && data.ownerId == userId
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
     function isValidSettings(data, userId) {
       return data.keys().hasAll(['shiurim', 'subjects', 'ownerId', 'updatedAt'])
-        && data.keys().size() == 4
+        && data.keys().size() >= 4 && data.keys().size() <= 6
         && data.shiurim is list && data.shiurim.size() <= 100
         && data.subjects is list && data.subjects.size() <= 100
+        && (!('rooms' in data) || (data.rooms is list && data.rooms.size() <= 1000))
+        && (!('subjectClasses' in data) || (data.subjectClasses is map && data.subjectClasses.size() <= 100))
         && data.ownerId == userId
         && data.updatedAt is int;
     }
@@ -83,7 +116,7 @@ service cloud.firestore {
         allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
         allow create: if isOwner(userId) && isValidStudent(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
         allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'shiur', 'updatedAt'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'shiur', 'room', 'subjectLevels', 'chavrusas', 'updatedAt'])
         ) && isValidStudent(incoming(), userId);
         allow delete: if isOwner(userId) && isSecureOwner(existing());
       }
@@ -118,12 +151,32 @@ service cloud.firestore {
         allow delete: if isOwner(userId) && isSecureOwner(existing());
       }
 
+      match /treatments/{treatmentId} {
+        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isOwner(userId) && isValidTreatment(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['studentId', 'date', 'handler', 'issue', 'treatment', 'updatedAt'])
+        ) && isValidTreatment(incoming(), userId);
+        allow delete: if isOwner(userId) && isSecureOwner(existing());
+      }
+
+      match /plannedAbsences/{absenceId} {
+        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isOwner(userId) && isValidPlannedAbsence(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['studentId', 'fromDate', 'toDate', 'fromTime', 'toTime', 'reason', 'updatedAt'])
+        ) && isValidPlannedAbsence(incoming(), userId);
+        allow delete: if isOwner(userId) && isSecureOwner(existing());
+      }
+
       match /settings/global {
         allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
         allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
         allow create: if isOwner(userId) && isValidSettings(incoming(), userId) && isValidTimestamp(incoming().updatedAt);
         allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && isValidTimestamp(incoming().updatedAt) && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['shiurim', 'subjects', 'updatedAt'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['shiurim', 'subjects', 'rooms', 'subjectClasses', 'updatedAt'])
         ) && isValidSettings(incoming(), userId);
         allow delete: if false;
       }

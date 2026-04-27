@@ -6,21 +6,34 @@ import { StudentLessonRecord, Attendance, Behavior, Student } from '../types';
 import { formatHebrewDate } from '../lib/dateUtils';
 
 export function ActiveLessonView({ lessonId, onClose }: { lessonId: string, onClose?: () => void }) {
-  const { lessons, students, updateLessonRecord, finishLesson, deleteLesson } = useAppStore();
+  const { lessons, students, subjectClasses, updateLessonRecord, finishLesson, deleteLesson } = useAppStore();
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   
   const lesson = lessons.find(l => l.id === lessonId);
   if (!lesson) return <div>Lesson not found</div>;
 
-  // Filter students to only those in the participating shiurim
+  // Filter students to only those in the participating shiurim or classes
   const participatingStudents = students
-    .filter(s => lesson.shiurim.includes(s.shiur))
-    .sort((a, b) => a.shiur.localeCompare(b.shiur) || a.name.localeCompare(b.name));
+    .filter(s => {
+      const matchesShiur = lesson.shiurim.includes(s.shiur);
+      const matchesClass = subjectClasses[lesson.subject] ? lesson.shiurim.includes(s.subjectLevels?.[lesson.subject] || '') : false;
+      return matchesShiur || matchesClass;
+    })
+    .sort((a, b) => {
+      // For sorting, prioritize class if they matched by class
+      const clsA = subjectClasses[lesson.subject] && lesson.shiurim.includes(a.subjectLevels?.[lesson.subject] || '') ? `כיתה ${a.subjectLevels[lesson.subject]}` : `שיעור ${a.shiur}`;
+      const clsB = subjectClasses[lesson.subject] && lesson.shiurim.includes(b.subjectLevels?.[lesson.subject] || '') ? `כיתה ${b.subjectLevels[lesson.subject]}` : `שיעור ${b.shiur}`;
+      return clsA.localeCompare(clsB) || a.name.localeCompare(b.name);
+    });
 
   const groupedStudents = participatingStudents.reduce((acc, student) => {
-    if (!acc[student.shiur]) acc[student.shiur] = [];
-    acc[student.shiur].push(student);
+    let group = `שיעור ${student.shiur}`;
+    if (subjectClasses[lesson.subject] && lesson.shiurim.includes(student.subjectLevels?.[lesson.subject] || '')) {
+      group = `כיתה ${student.subjectLevels[lesson.subject]}`;
+    }
+    if (!acc[group]) acc[group] = [];
+    acc[group].push(student);
     return acc;
   }, {} as Record<string, typeof participatingStudents>);
 
@@ -89,7 +102,7 @@ export function ActiveLessonView({ lessonId, onClose }: { lessonId: string, onCl
           const studentsInShiur = groupedStudents[shiurKey];
           return (
             <div key={shiurKey} className="flex flex-col gap-3">
-              <h2 className="text-xl font-bold px-2">שיעור {shiurKey}</h2>
+              <h2 className="text-xl font-bold px-2">{shiurKey}</h2>
               <Card className="p-0 bg-[var(--color-card-bg)] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] border border-black/[0.02]">
                 <div className="hidden lg:grid lg:grid-cols-[200px_1fr_1fr_1fr_40px] bg-gray-50/50 p-4 border-b border-black/5 text-xs font-bold text-gray-500 tracking-wide rounded-t-[24px]">
                   <div>תלמיד</div>

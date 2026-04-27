@@ -59,6 +59,7 @@ export interface PlannedAbsence {
 export interface StudentNightRecord {
   roomMinutesLate?: number; // 0 or undefined means on time (if not absent)
   isRoomAbsent?: boolean;
+  isAuthorizedAbsence?: boolean;
   hamapilMinutesLate?: number; // 0 or undefined means on time
   talking?: boolean; // talking during sleep time
   notes?: string;

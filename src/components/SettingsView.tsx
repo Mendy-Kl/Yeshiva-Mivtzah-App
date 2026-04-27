@@ -4,7 +4,7 @@ import { Button, Card, Input } from './ui';
 import { Settings, Users, BookOpen, Trash2, LibraryBig, LogOut, Home, X, Plus } from 'lucide-react';
 
 export function SettingsView() {
-  const { shiurim, addShiur, removeShiur, students, addStudent, updateStudent, removeStudent, subjects, addSubject, removeSubject, rooms, addRoom, removeRoom, subjectClasses, addSubjectClass, removeSubjectClass, logout } = useAppStore();
+  const { shiurim, addShiur, removeShiur, students, addStudent, updateStudent, removeStudent, subjects, addSubject, removeSubject, rooms, addRoom, removeRoom, subjectClasses, addSubjectClass, removeSubjectClass, staffRole, staffDirectory, addStaff, removeStaff, updateStaffRole, currentInstitution, updateInstitutionName, deleteInstitution } = useAppStore();
   const [newShiur, setNewShiur] = useState('');
   const [newSubject, setNewSubject] = useState('');
   const [newStudentName, setNewStudentName] = useState('');
@@ -17,6 +17,20 @@ export function SettingsView() {
   const [activeClassManager, setActiveClassManager] = useState<{subject: string, className: string} | null>(null);
   const [classSearchQuery, setClassSearchQuery] = useState('');
   const [newClassName, setNewClassName] = useState('');
+
+  const [newStaffEmail, setNewStaffEmail] = useState('');
+  const [newStaffName, setNewStaffName] = useState('');
+  const [newStaffRole, setNewStaffRole] = useState<'admin'|'teacher'>('teacher');
+  
+  const [editingInstName, setEditingInstName] = useState(false);
+  const [instNameValue, setInstNameValue] = useState(currentInstitution?.name || '');
+
+  const handleUpdateInstName = async () => {
+    if (instNameValue.trim() && instNameValue !== currentInstitution?.name) {
+      await updateInstitutionName(instNameValue.trim());
+    }
+    setEditingInstName(false);
+  };
 
   useEffect(() => {
     if (!selectedShiur && shiurim.length > 0) {
@@ -64,17 +78,67 @@ export function SettingsView() {
     }
   };
 
+  const handleAddStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newStaffEmail.trim() && newStaffName.trim()) {
+      await addStaff(newStaffEmail.trim(), newStaffName.trim(), newStaffRole);
+      setNewStaffEmail('');
+      setNewStaffName('');
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-start px-1">
-        <button 
-          onClick={logout}
-          className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl font-medium transition-colors cursor-pointer"
-        >
-          <LogOut size={16} />
-          <span>התנתק מהענן</span>
-        </button>
-      </div>
+      {staffRole === 'admin' && currentInstitution && (
+        <Card className="max-w-7xl mx-auto w-full mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
+                <Settings size={24} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">הגדרות מוסד</h2>
+                {editingInstName ? (
+                  <div className="flex gap-2 mt-1">
+                    <Input 
+                      value={instNameValue} 
+                      onChange={e => setInstNameValue(e.target.value)} 
+                      className="h-8 max-w-[200px]"
+                    />
+                    <Button size="sm" onClick={handleUpdateInstName}>שמור</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingInstName(false)}>ביטול</Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 items-center text-gray-500 mt-1">
+                    <span>שם המוסד: <strong className="text-gray-800">{currentInstitution.name}</strong></span>
+                    <button onClick={() => {
+                        setInstNameValue(currentInstitution.name);
+                        setEditingInstName(true);
+                      }} 
+                      className="text-blue-500 hover:text-blue-700 text-sm focus:outline-none"
+                    >
+                      (שנה שם)
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <button 
+                onClick={() => {
+                  if (confirm('האם אתה בטוח שברצונך למחוק את המוסד? פעולה זו בלתי הפיכה.')) {
+                    deleteInstitution();
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl focus:outline-none transition-colors font-medium text-sm"
+              >
+                <Trash2 size={16} />
+                מחק מוסד
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-7xl mx-auto w-full">
         {/* Shiurim Manager */}
@@ -231,6 +295,68 @@ export function SettingsView() {
           )}
         </div>
       </Card>
+      {staffRole === 'admin' && (
+        <Card className="flex flex-col h-full lg:col-span-2">
+          <div className="flex items-center gap-3 mb-6">
+            <Settings className="text-gray-400" />
+            <h2 className="text-xl font-bold text-gray-800">ניהול צוות (מנהל בלבד)</h2>
+          </div>
+          
+          <form onSubmit={handleAddStaff} className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
+            <Input 
+              placeholder="אימייל מחשבון גוגל" 
+              type="email"
+              value={newStaffEmail}
+              onChange={e => setNewStaffEmail(e.target.value)}
+              required
+            />
+            <Input 
+              placeholder="שם העובד" 
+              value={newStaffName}
+              onChange={e => setNewStaffName(e.target.value)}
+              required
+            />
+            <select 
+              className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] transition-all cursor-pointer"
+              value={newStaffRole}
+              onChange={e => setNewStaffRole(e.target.value as 'admin'|'teacher')}
+            >
+              <option value="teacher">מורה / ר"מ</option>
+              <option value="admin">מנהל</option>
+            </select>
+            <Button type="submit">הוסף איש צוות</Button>
+          </form>
+
+          <div className="flex-1 overflow-auto">
+             {staffDirectory.length === 0 ? (
+               <p className="text-gray-500 text-center mt-8">לא הוגדרו עדיין אנשי צוות למערכת.</p>
+             ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {staffDirectory.map(staff => (
+                    <div key={staff.email} className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex justify-between items-center">
+                      <div>
+                        <div className="font-bold text-gray-800">{staff.name}</div>
+                        <div className="text-xs text-gray-500 mb-2">{staff.email}</div>
+                        <select 
+                          value={staff.role} 
+                          onChange={(e) => updateStaffRole(staff.id, e.target.value as 'admin'|'teacher')}
+                          className={`text-xs font-bold rounded-full px-2 py-0.5 border-none cursor-pointer outline-none focus:ring-0 ${staff.role === 'admin' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}
+                        >
+                          <option value="admin">מנהל</option>
+                          <option value="teacher">מורה</option>
+                        </select>
+                      </div>
+                      <button onClick={() => removeStaff(staff.id, staff.email)} className="text-red-400 hover:text-red-600 transition-colors p-2 cursor-pointer bg-white rounded-lg shadow-sm border border-red-100">
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+             )}
+          </div>
+        </Card>
+      )}
+
       </div>
 
       {/* Modals */}

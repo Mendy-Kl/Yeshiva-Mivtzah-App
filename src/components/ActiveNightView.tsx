@@ -134,26 +134,50 @@ export function ActiveNightView({ nightId, onClose }: { nightId: string, onClose
 
                             {/* החדרים */}
                             <td className="px-4 py-3 align-middle">
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant={record.isRoomAbsent ? 'danger' : 'outline'}
-                                  className={`px-3 py-1.5 h-auto text-xs ${record.isRoomAbsent ? '' : 'text-red-500 border-red-500/30 hover:bg-red-50 hover:border-red-500'}`}
-                                  onClick={() => handleUpdate(student.id, { isRoomAbsent: !record.isRoomAbsent, roomMinutesLate: undefined })}
-                                >
-                                  חיסור
-                                </Button>
-                                <div className="relative flex-1">
-                                  <Input 
-                                    type="number"
-                                    min="0"
-                                    placeholder="דק׳ איחור"
-                                    disabled={record.isRoomAbsent}
-                                    value={record.roomMinutesLate !== undefined ? record.roomMinutesLate : ''}
-                                    onChange={(e) => handleUpdate(student.id, { roomMinutesLate: e.target.value ? Number(e.target.value) : undefined, isRoomAbsent: false })}
-                                    className={`text-center ${record.isRoomAbsent ? 'opacity-50 line-through' : ''}`}
-                                    dir="ltr"
-                                  />
-                                </div>
+                              <div className="flex items-center gap-1 bg-black/5 p-1 rounded-xl h-[34px] relative w-max">
+                                {!record.isRoomAbsent ? (
+                                  <>
+                                    <div className="relative flex-1 max-w-[60px]">
+                                      <input 
+                                        type="number"
+                                        min="0"
+                                        placeholder="דק׳ איחור"
+                                        disabled={record.isRoomAbsent}
+                                        value={record.roomMinutesLate !== undefined ? record.roomMinutesLate : ''}
+                                        onChange={(e) => handleUpdate(student.id, { roomMinutesLate: e.target.value ? Number(e.target.value) : undefined, isRoomAbsent: false })}
+                                        className="w-full text-center h-full px-1 text-xs border border-transparent rounded-lg focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+                                        dir="ltr"
+                                      />
+                                    </div>
+                                    <button
+                                      onClick={() => handleUpdate(student.id, { isRoomAbsent: true, roomMinutesLate: undefined })}
+                                      className="px-3 min-w-[50px] h-full text-[10px] font-bold rounded-lg transition-colors text-gray-500 hover:text-gray-800 hover:bg-black/5"
+                                    >
+                                      חיסר
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => handleUpdate(student.id, { isRoomAbsent: false, roomMinutesLate: undefined, isAuthorizedAbsence: false })}
+                                      className={`px-3 min-w-[50px] shrink-0 h-full text-[10px] font-bold rounded-lg transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.1)] ${record.isAuthorizedAbsence ? 'bg-[#dcfce7] text-[#15803d]' : 'bg-[#fee2e2] text-[var(--color-danger)]'}`}
+                                    >
+                                      חיסר
+                                    </button>
+                                    <label className={`flex items-center justify-center gap-1 text-[10px] font-bold cursor-pointer h-full rounded-lg transition-colors px-2 border border-transparent hover:border-black/5 ${record.isAuthorizedAbsence ? 'bg-[#dcfce7]/50 text-[#15803d] hover:bg-[#dcfce7]/80' : 'bg-white/50 text-gray-700 hover:bg-white'}`}>
+                                      <input
+                                        type="checkbox"
+                                        checked={record.isAuthorizedAbsence || false}
+                                        onChange={e => {
+                                          handleUpdate(student.id, { isAuthorizedAbsence: e.target.checked });
+                                          if (e.target.checked) openNote(student.id);
+                                        }}
+                                        className={`w-3 h-3 rounded appearance-none border border-gray-300 relative after:content-['✓'] after:absolute after:text-[8px] after:text-white after:left-[1px] after:top-[1.5px] checked:after:flex after:items-center after:justify-center after:hidden ${record.isAuthorizedAbsence ? 'checked:bg-[#15803d] checked:border-[#15803d]' : 'checked:bg-[var(--color-primary)] checked:border-[var(--color-primary)]'}`}
+                                      />
+                                      <span className="whitespace-nowrap">באישור</span>
+                                    </label>
+                                  </>
+                                )}
                               </div>
                             </td>
 

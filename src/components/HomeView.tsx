@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../AppContext';
 import { Card, Button, Input, Badge, TimeInput } from './ui';
-import { PlayCircle, Users, BookOpen, BarChart3, Search, ChevronLeft, Moon, ChevronDown, Check } from 'lucide-react';
+import { PlayCircle, Users, BookOpen, BarChart3, Search, ChevronLeft, Moon, ChevronDown, Check, Trash2 } from 'lucide-react';
 import { Shiur } from '../types';
 import { StudentProfileView } from './StudentProfileView';
 import { formatHebrewDateTime } from '../lib/dateUtils';
 import { DateRangePicker } from './DateRangePicker';
+import { ConfirmModal } from './ConfirmModal';
 
 export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: string) => void, onStartNight?: (id: string) => void, onNavigate?: (view: any) => void }) {
-  const { students, shiurim, subjects, lessons, startLesson, nightRegistrations, startNightRegistration, addPlannedAbsence } = useAppStore();
+  const { students, shiurim, subjects, subjectClasses, lessons, startLesson, deleteLesson, nightRegistrations, startNightRegistration, deleteNightRegistration, addPlannedAbsence, removeStudent } = useAppStore();
   const [subject, setSubject] = useState('');
   const [selectedShiurim, setSelectedShiurim] = useState<Shiur[]>([]);
   const [showStartModal, setShowStartModal] = useState<'lesson' | 'night' | 'absence' | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'lesson' | 'night' | 'student', id: string, name: string } | null>(null);
   
   // Absence Form State
   const [absStudentId, setAbsStudentId] = useState('');
@@ -33,8 +35,8 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
     return <StudentProfileView studentId={activeStudentId} onClose={() => setActiveStudentId(null)} />;
   }
 
-  const activeLesson = lessons.find(l => l.isActive);
-  const activeNight = nightRegistrations?.find(n => n.isActive);
+  const activeLessons = lessons.filter(l => l.isActive);
+  const activeNights = nightRegistrations?.filter(n => n.isActive) || [];
   
   const finishedLessons = lessons.filter(l => !l.isActive).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const finishedNights = (nightRegistrations || []).filter(n => !n.isActive).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -101,26 +103,30 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
         </p>
         
         <div className="flex flex-col sm:flex-row justify-center gap-3 w-full max-w-xl mx-auto relative z-10">
-          {activeLesson ? (
-            <Button size="lg" variant="secondary" className="flex-1 text-[15px]" onClick={() => onStart(activeLesson.id)}>
-              <PlayCircle className="ml-2" size={18} /> חזור לשיעור הפעיל ({activeLesson.subject})
-            </Button>
-          ) : (
-            <Button size="lg" variant="secondary" className="flex-1 text-[15px]" onClick={() => setShowStartModal('lesson')}>
-              <PlayCircle className="ml-2" size={18} /> התחל שיעור חדש
-            </Button>
-          )}
+          <Button size="lg" variant="secondary" className="flex-1 text-[15px]" onClick={() => { setSubject(''); setSelectedShiurim([]); setShowStartModal('lesson'); }}>
+            <PlayCircle className="ml-2" size={18} /> התחל שיעור חדש
+          </Button>
 
-          {activeNight ? (
-            <Button size="lg" className="flex-1 bg-indigo-900 text-white hover:bg-indigo-800 border-none text-[15px] shadow-sm" onClick={() => onStartNight && onStartNight(activeNight.id)}>
-              <Moon className="ml-2" size={18} /> חזור לרישום הלילה
-            </Button>
-          ) : (
-            <Button size="lg" className="flex-1 bg-indigo-900 text-white hover:bg-indigo-800 border-none text-[15px] shadow-sm" onClick={() => setShowStartModal('night')}>
-              <Moon className="ml-2" size={18} /> רישום לילה
-            </Button>
-          )}
+          <Button size="lg" className="flex-1 bg-indigo-900 text-white hover:bg-indigo-800 border-none text-[15px] shadow-sm" onClick={() => { setSelectedShiurim([]); setShowStartModal('night'); }}>
+            <Moon className="ml-2" size={18} /> רישום לילה
+          </Button>
         </div>
+
+        {(activeLessons.length > 0 || activeNights.length > 0) && (
+          <div className="mt-4 w-full max-w-xl mx-auto relative z-10 flex flex-col gap-2">
+            <div className="text-[13px] font-bold text-orange-900/60 mb-1 text-right pr-2">הצטרפות לרישום פעיל:</div>
+            {activeLessons.map(l => (
+              <Button key={l.id} size="sm" variant="secondary" className="w-full text-[14px] bg-white text-orange-950 justify-start h-12 shadow-sm border border-transparent hover:border-orange-900/20" onClick={() => onStart(l.id)}>
+                <PlayCircle className="ml-2 text-orange-600" size={18} /> סדר {l.subject} מופעל כעת ({l.shiurim.join(', ')})
+              </Button>
+            ))}
+            {activeNights.map(n => (
+              <Button key={n.id} size="sm" className="w-full justify-start text-[14px] h-12 bg-indigo-800 text-white hover:bg-indigo-700 shadow-sm" onClick={() => onStartNight && onStartNight(n.id)}>
+                <Moon className="ml-2 text-indigo-300" size={18} /> רישום לילה פתוח ({n.shiurim.join(', ')})
+              </Button>
+            ))}
+          </div>
+        )}
 
         <div className="mt-3 w-full max-w-xl mx-auto relative z-10 flex flex-col sm:flex-row gap-3">
           <Button size="lg" variant="outline" className="flex-1 bg-white/60 border-orange-950/20 text-orange-950 font-bold hover:bg-white transition-all shadow-sm text-[15px]" onClick={() => onNavigate && onNavigate('matrix')}>
@@ -164,84 +170,137 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
         </div>
 
       {/* Start Lesson Modal (Embedded) */}
-      {showStartModal === 'lesson' && !activeLesson && (
+      {showStartModal === 'lesson' && (
         <Card className="border-2 border-[var(--color-primary)]">
           <h2 className="text-2xl font-bold mb-6">פרטי השיעור</h2>
           <form onSubmit={handleStartLesson} className="flex flex-col gap-6">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">נושא / מקצוע השיעור</label>
-              {subjects?.length === 0 ? (
-                <p className="text-sm text-red-500 mb-2">יש להגדיר מקצועות בהגדרות המערכת תחילה.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {subjects?.map(s => {
-                    const isSelected = subject === s;
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setSubject(isSelected ? '' : s)}
-                        className={`px-4 py-2 rounded-[12px] border text-sm font-medium transition-all cursor-pointer ${
-                          isSelected 
-                          ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-[var(--color-text-main)]' 
-                          : 'bg-transparent border-black/10 text-[var(--color-text-main)] hover:bg-black/5'
-                        }`}
-                      >
-                        {s}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">שיעורים משתתפים</label>
-              {shiurim.length === 0 ? (
-                <p className="text-sm text-red-500">יש להגדיר שיעורים בהגדרות המערכת תחילה.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2 items-center">
-                  {shiurim.length > 1 && (
-                    <>
+            <div className="flex flex-col md:flex-row gap-6">
+              <div className="flex-1">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">נושא / מקצוע השיעור</label>
+                {subjects?.length === 0 ? (
+                  <p className="text-sm text-red-500 mb-2">יש להגדיר מקצועות בהגדרות המערכת תחילה.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {subjects?.map(s => {
+                      const isSelected = subject === s;
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => {
+                            setSubject(isSelected ? '' : s);
+                            setSelectedShiurim([]); // Reset when subject changes
+                          }}
+                          className={`px-4 py-2 rounded-[12px] border text-sm font-medium transition-all cursor-pointer ${
+                            isSelected 
+                            ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-[var(--color-text-main)]' 
+                            : 'bg-transparent border-black/10 text-[var(--color-text-main)] hover:bg-black/5'
+                          }`}
+                        >
+                          {s}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex-[1.5_1.5_0%] md:border-r md:border-gray-200 md:pr-6 flex flex-col gap-6">
+                {subject && subjectClasses && subjectClasses[subject] && subjectClasses[subject].length > 0 && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">בחר כיתת לימוד למקצוע זה</label>
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => {
-                          if (selectedShiurim.length === shiurim.length) {
-                            setSelectedShiurim([]);
+                          const allClasses = subjectClasses[subject];
+                          const hasAll = allClasses.every(c => selectedShiurim.includes(c));
+                          if (hasAll) {
+                            setSelectedShiurim(prev => prev.filter(s => !allClasses.includes(s)));
                           } else {
-                            setSelectedShiurim([...shiurim]);
+                            setSelectedShiurim(prev => Array.from(new Set([...prev, ...allClasses])));
                           }
                         }}
                         className={`px-4 py-2 rounded-[12px] border text-sm font-bold transition-all cursor-pointer ${
-                          selectedShiurim.length === shiurim.length
+                          subjectClasses[subject].every(c => selectedShiurim.includes(c)) && subjectClasses[subject].length > 0
                           ? 'bg-[var(--color-text-main)] border-[var(--color-text-main)] text-white' 
                           : 'bg-transparent border-black/10 text-[var(--color-text-main)] hover:bg-black/5'
                         }`}
                       >
-                        כל השיעורים
+                        כל הכיתות
                       </button>
-                      <div className="w-[1px] h-6 bg-gray-300 mx-1"></div>
-                    </>
+                      <div className="w-[1px] h-6 bg-gray-300 mx-1 self-center"></div>
+                      {subjectClasses[subject].map(cls => {
+                        const isSelected = selectedShiurim.includes(cls);
+                        return (
+                          <button
+                            key={cls}
+                            type="button"
+                            onClick={() => toggleShiur(cls)}
+                            className={`px-4 py-2 rounded-[12px] border text-sm font-medium transition-all cursor-pointer ${
+                              isSelected 
+                              ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-[var(--color-text-main)]' 
+                              : 'bg-transparent border-black/10 text-[var(--color-text-main)] hover:bg-black/5'
+                            }`}
+                          >
+                            {cls}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">שיעורים משתתפים</label>
+                  {shiurim.length === 0 ? (
+                    <p className="text-sm text-red-500">יש להגדיר שיעורים בהגדרות המערכת תחילה.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 items-center">
+                      {shiurim.length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const hasAll = shiurim.every(s => selectedShiurim.includes(s));
+                              if (hasAll) {
+                                setSelectedShiurim(prev => prev.filter(s => !shiurim.includes(s)));
+                              } else {
+                                setSelectedShiurim(prev => Array.from(new Set([...prev, ...shiurim])));
+                              }
+                            }}
+                            className={`px-4 py-2 rounded-[12px] border text-sm font-bold transition-all cursor-pointer ${
+                              shiurim.every(s => selectedShiurim.includes(s))
+                              ? 'bg-[var(--color-text-main)] border-[var(--color-text-main)] text-white' 
+                              : 'bg-transparent border-black/10 text-[var(--color-text-main)] hover:bg-black/5'
+                            }`}
+                          >
+                            כל השיעורים
+                          </button>
+                          <div className="w-[1px] h-6 bg-gray-300 mx-1"></div>
+                        </>
+                      )}
+                      {shiurim.map(shiur => {
+                        const isSelected = selectedShiurim.includes(shiur);
+                        return (
+                          <button
+                            key={shiur}
+                            type="button"
+                            onClick={() => toggleShiur(shiur)}
+                            className={`px-4 py-2 rounded-[12px] border text-sm font-medium transition-all cursor-pointer ${
+                              isSelected 
+                              ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-[var(--color-text-main)]' 
+                              : 'bg-transparent border-black/10 text-[var(--color-text-main)] hover:bg-black/5'
+                            }`}
+                          >
+                            שיעור {shiur}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
-                  {shiurim.map(shiur => {
-                    const isSelected = selectedShiurim.includes(shiur);
-                    return (
-                      <button
-                        key={shiur}
-                        type="button"
-                        onClick={() => toggleShiur(shiur)}
-                        className={`px-4 py-2 rounded-[12px] border text-sm font-medium transition-all cursor-pointer ${
-                          isSelected 
-                          ? 'bg-[var(--color-primary)] border-[var(--color-primary)] text-[var(--color-text-main)]' 
-                          : 'bg-transparent border-black/10 text-[var(--color-text-main)] hover:bg-black/5'
-                        }`}
-                      >
-                        שיעור {shiur}
-                      </button>
-                    );
-                  })}
                 </div>
-              )}
+              </div>
             </div>
 
             <div className="flex gap-4 mt-4">
@@ -257,7 +316,7 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
       )}
 
       {/* Start Night Modal (Embedded) */}
-      {showStartModal === 'night' && !activeNight && (
+      {showStartModal === 'night' && (
         <Card className="border-2 border-indigo-900">
           <h2 className="text-2xl font-bold mb-6 flex items-center gap-2"><Moon className="text-indigo-900" />רישום לילה חדש</h2>
           <form onSubmit={handleStartNight} className="flex flex-col gap-6">
@@ -457,7 +516,7 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
                 <div 
                   key={lesson.id} 
                   onClick={() => onStart(lesson.id)}
-                  className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-black/5 hover:bg-black/10 rounded-xl cursor-pointer transition-colors"
+                  className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-black/5 hover:bg-black/10 rounded-xl cursor-pointer transition-colors group"
                 >
                   <div>
                     <h3 className="font-bold text-lg">{lesson.subject}</h3>
@@ -465,9 +524,23 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
                       {formatHebrewDateTime(lesson.date)} • שיעורים: {lesson.shiurim.join(', ')}
                     </p>
                   </div>
-                  <Button variant="secondary" className="mt-4 sm:mt-0" onClick={(e) => { e.stopPropagation(); onStart(lesson.id); }}>
-                    פתח לעריכה
-                  </Button>
+                  <div className="flex items-center gap-2 mt-4 sm:mt-0">
+                    <button 
+                      type="button"
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        e.preventDefault();
+                        setDeleteConfirm({ type: 'lesson', id: lesson.id, name: lesson.subject });
+                      }}
+                      className="relative z-10 text-gray-400 hover:text-red-500 active:bg-red-100 hover:bg-red-50 p-3 rounded-xl transition-colors shrink-0 cursor-pointer md:opacity-0 md:group-hover:opacity-100"
+                      title="מחק שיעור"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                    <Button variant="secondary" onClick={(e) => { e.stopPropagation(); onStart(lesson.id); }}>
+                      פתח לעריכה
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -490,7 +563,7 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
                 <div 
                   key={night.id} 
                   onClick={() => onStartNight && onStartNight(night.id)}
-                  className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-indigo-50/50 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-xl cursor-pointer transition-colors"
+                  className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-indigo-50/50 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-xl cursor-pointer transition-colors group"
                 >
                   <div>
                     <h3 className="font-bold text-lg text-indigo-950">רישום לילה</h3>
@@ -499,9 +572,23 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
                     </p>
                   </div>
                   {onStartNight && (
-                    <Button variant="secondary" className="mt-4 sm:mt-0 bg-white border-indigo-200 text-indigo-900 hover:bg-indigo-50" onClick={(e) => { e.stopPropagation(); onStartNight(night.id); }}>
-                      פתח לעריכה
-                    </Button>
+                    <div className="flex items-center gap-2 mt-4 sm:mt-0">
+                      <button 
+                        type="button"
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          e.preventDefault();
+                          setDeleteConfirm({ type: 'night', id: night.id, name: 'רישום לילה' });
+                        }}
+                        className="relative z-10 text-gray-400 hover:text-red-500 active:bg-red-100 hover:bg-red-50 p-3 rounded-xl transition-colors shrink-0 cursor-pointer md:opacity-0 md:group-hover:opacity-100"
+                        title="מחק רישום"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                      <Button variant="secondary" className="bg-white border-indigo-200 text-indigo-900 hover:bg-indigo-50" onClick={(e) => { e.stopPropagation(); onStartNight(night.id); }}>
+                        פתח לעריכה
+                      </Button>
+                    </div>
                   )}
                 </div>
               ))}
@@ -577,10 +664,24 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
                       <div 
                         key={student.id} 
                         onClick={() => setActiveStudentId(student.id)}
-                        className="flex justify-between items-center p-3 rounded-lg cursor-pointer hover:bg-orange-50 transition-colors border-b border-gray-100 last:border-b-0 md:last:border-b md:even:border-b-0 lg:last:border-b"
+                        className="flex justify-between items-center p-3 rounded-lg cursor-pointer hover:bg-orange-50 transition-colors border-b border-gray-100 last:border-b-0 md:last:border-b md:even:border-b-0 lg:last:border-b group"
                       >
                         <div className="font-semibold text-gray-800">{student.name}</div>
-                        <ChevronLeft size={16} className="text-gray-400 opacity-50" />
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              setDeleteConfirm({ type: 'student', id: student.id, name: student.name });
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors md:opacity-0 md:group-hover:opacity-100 cursor-pointer"
+                            title="מחק תלמיד"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                          <ChevronLeft size={16} className="text-gray-400 opacity-50" />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -590,6 +691,21 @@ export function HomeView({ onStart, onStartNight, onNavigate }: { onStart: (id: 
           )}
         </Card>
       )}
+
+      <ConfirmModal 
+        isOpen={deleteConfirm !== null}
+        title={`מחיקת ${deleteConfirm?.type === 'lesson' ? 'שיעור' : deleteConfirm?.type === 'student' ? 'תלמיד' : 'רישום'}`}
+        message={deleteConfirm?.type === 'student' ? `האם אתה בטוח שברצונך למחוק את התלמיד "${deleteConfirm?.name}"? פעולה זו תמחק אותו מכל מקום במערכת ולא ניתנת לביטול.` : `האם אתה עומד למחוק את הרשומה "${deleteConfirm?.name}"? לא ניתן לבטל זאת.`}
+        onConfirm={() => {
+          if (deleteConfirm) {
+            if (deleteConfirm.type === 'lesson') deleteLesson(deleteConfirm.id);
+            else if (deleteConfirm.type === 'night') deleteNightRegistration(deleteConfirm.id);
+            else if (deleteConfirm.type === 'student') removeStudent(deleteConfirm.id);
+            setDeleteConfirm(null);
+          }
+        }}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </div>
   );
 }

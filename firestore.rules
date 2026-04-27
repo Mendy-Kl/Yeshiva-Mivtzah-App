@@ -10,10 +10,65 @@ service cloud.firestore {
     // Primitives
     function isSignedIn() { return request.auth != null; }
     function isValidId(id) { return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function isValidEmailId(id) { return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_.@\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
     function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isOwnerOrAdmin() { return isSignedIn() && request.auth.token.email == 'mmkl770@gmail.com'; }
+    function hasStaffAccess(userId) {
+       return isSignedIn() && (
+         request.auth.uid == userId || 
+         request.auth.token.email == 'mmkl770@gmail.com' ||
+         (request.auth.token.email != null && exists(/databases/$(database)/documents/staffDirectory/$(userId + '_' + request.auth.token.email))) ||
+         (exists(/databases/$(database)/documents/institutions/$(userId)) && get(/databases/$(database)/documents/institutions/$(userId)).data.ownerId == request.auth.uid)
+       );
+    }
     function isValidTimestamp(ts) { return ts is int && ts >= request.time.toMillis() - 864000000 && ts <= request.time.toMillis() + 864000000; }
+
+    function isValidInstitution(data) {
+      return data.keys().hasAll(['ownerId', 'name', 'createdAt', 'updatedAt'])
+        && data.keys().size() >= 4 && data.keys().size() <= 6
+        && data.ownerId is string && data.ownerId.size() > 0 && data.ownerId.size() <= 128
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.createdAt is int
+        && data.updatedAt is int;
+    }
+
+    match /institutions/{instId} {
+      allow get: if isSignedIn() && (
+        resource == null ||
+        resource.data.ownerId == request.auth.uid ||
+        hasStaffAccess(instId)
+      );
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && incoming().ownerId == request.auth.uid && isValidInstitution(incoming()) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+      allow update: if isSignedIn() && existing().ownerId == request.auth.uid && isValidInstitution(incoming()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt']);
+      allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
+    }
+
+    function isInstitutionOwner(adminUid) {
+      return request.auth.uid == adminUid || (exists(/databases/$(database)/documents/institutions/$(adminUid)) && get(/databases/$(database)/documents/institutions/$(adminUid)).data.ownerId == request.auth.uid);
+    }
+
+    function isValidStaffDirectory(data) {
+      return data.keys().hasAll(['adminUid', 'email', 'role', 'name', 'createdAt'])
+        && data.keys().size() >= 5
+        && data.keys().size() <= 8
+        && data.adminUid is string && data.adminUid.size() > 0 && data.adminUid.size() <= 128
+        && data.email is string && data.email.size() > 0 && data.email.size() <= 128
+        && data.role is string && (data.role == 'teacher' || data.role == 'admin')
+        && data.name is string && data.name.size() >= 0 && data.name.size() <= 100
+        && (!('institutionName' in data) || data.institutionName is string)
+        && data.createdAt is int;
+    }
+
+    match /staffDirectory/{staffId} {
+      allow get: if isSignedIn() && (resource == null || resource.data.email == request.auth.token.email || isInstitutionOwner(resource.data.adminUid) || request.auth.token.email == 'mmkl770@gmail.com');
+      allow list: if isSignedIn() && (resource.data.email == request.auth.token.email || request.auth.token.email == 'mmkl770@gmail.com' || resource.data.adminUid != null);
+      allow create: if isSignedIn() && isInstitutionOwner(incoming().adminUid) && isValidStaffDirectory(incoming()) && isValidTimestamp(incoming().createdAt);
+      allow update: if isSignedIn() && isInstitutionOwner(existing().adminUid) && isValidStaffDirectory(incoming()) && incoming().createdAt == existing().createdAt && incoming().adminUid == existing().adminUid && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'name', 'institutionName']);
+      allow delete: if isSignedIn() && isInstitutionOwner(existing().adminUid);
+    }
 
     // Validation Blueprints
     function isValidStudent(data, userId) {
@@ -106,76 +161,76 @@ service cloud.firestore {
         && data.updatedAt is int;
     }
 
-    function isSecureOwner(existingData) {
-      return !('ownerId' in existingData) || existingData.ownerId == request.auth.uid;
+    function isSecureOwner(existingData, uid) {
+      return !('ownerId' in existingData) || existingData.ownerId == uid;
     }
 
     match /users/{userId} {
       match /students/{studentId} {
-        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
-        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
-        allow create: if isOwner(userId) && isValidStudent(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
-        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
+        allow read: if hasStaffAccess(userId) && (resource == null || isSecureOwner(existing(), userId));
+        allow list: if hasStaffAccess(userId) && resource.data.ownerId == userId;
+        allow create: if hasStaffAccess(userId) && isValidStudent(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+        allow update: if hasStaffAccess(userId) && isSecureOwner(existing(), userId) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
           incoming().diff(existing()).affectedKeys().hasOnly(['name', 'shiur', 'room', 'subjectLevels', 'chavrusas', 'updatedAt'])
         ) && isValidStudent(incoming(), userId);
-        allow delete: if isOwner(userId) && isSecureOwner(existing());
+        allow delete: if hasStaffAccess(userId) && isSecureOwner(existing(), userId);
       }
 
       match /lessons/{lessonId} {
-        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
-        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
-        allow create: if isOwner(userId) && isValidLesson(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
-        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
+        allow read: if hasStaffAccess(userId) && (resource == null || isSecureOwner(existing(), userId));
+        allow list: if hasStaffAccess(userId) && resource.data.ownerId == userId;
+        allow create: if hasStaffAccess(userId) && isValidLesson(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+        allow update: if hasStaffAccess(userId) && isSecureOwner(existing(), userId) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
           incoming().diff(existing()).affectedKeys().hasOnly(['date', 'subject', 'shiurim', 'records', 'isActive', 'updatedAt'])
         ) && isValidLesson(incoming(), userId);
-        allow delete: if isOwner(userId) && isSecureOwner(existing());
+        allow delete: if hasStaffAccess(userId) && isSecureOwner(existing(), userId);
       }
 
       match /exams/{examId} {
-        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
-        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
-        allow create: if isOwner(userId) && isValidExam(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
-        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
+        allow read: if hasStaffAccess(userId) && (resource == null || isSecureOwner(existing(), userId));
+        allow list: if hasStaffAccess(userId) && resource.data.ownerId == userId;
+        allow create: if hasStaffAccess(userId) && isValidExam(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+        allow update: if hasStaffAccess(userId) && isSecureOwner(existing(), userId) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
           incoming().diff(existing()).affectedKeys().hasOnly(['subject', 'date', 'shiurim', 'material', 'grades', 'updatedAt'])
         ) && isValidExam(incoming(), userId);
-        allow delete: if isOwner(userId) && isSecureOwner(existing());
+        allow delete: if hasStaffAccess(userId) && isSecureOwner(existing(), userId);
       }
 
       match /nightRegistrations/{nightId} {
-        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
-        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
-        allow create: if isOwner(userId) && isValidNightRegistration(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
-        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
+        allow read: if hasStaffAccess(userId) && (resource == null || isSecureOwner(existing(), userId));
+        allow list: if hasStaffAccess(userId) && resource.data.ownerId == userId;
+        allow create: if hasStaffAccess(userId) && isValidNightRegistration(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+        allow update: if hasStaffAccess(userId) && isSecureOwner(existing(), userId) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
           incoming().diff(existing()).affectedKeys().hasOnly(['date', 'shiurim', 'records', 'isActive', 'updatedAt'])
         ) && isValidNightRegistration(incoming(), userId);
-        allow delete: if isOwner(userId) && isSecureOwner(existing());
+        allow delete: if hasStaffAccess(userId) && isSecureOwner(existing(), userId);
       }
 
       match /treatments/{treatmentId} {
-        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
-        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
-        allow create: if isOwner(userId) && isValidTreatment(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
-        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
+        allow read: if hasStaffAccess(userId) && (resource == null || isSecureOwner(existing(), userId));
+        allow list: if hasStaffAccess(userId) && resource.data.ownerId == userId;
+        allow create: if hasStaffAccess(userId) && isValidTreatment(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+        allow update: if hasStaffAccess(userId) && isSecureOwner(existing(), userId) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
           incoming().diff(existing()).affectedKeys().hasOnly(['studentId', 'date', 'handler', 'issue', 'treatment', 'updatedAt'])
         ) && isValidTreatment(incoming(), userId);
-        allow delete: if isOwner(userId) && isSecureOwner(existing());
+        allow delete: if hasStaffAccess(userId) && isSecureOwner(existing(), userId);
       }
 
       match /plannedAbsences/{absenceId} {
-        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
-        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
-        allow create: if isOwner(userId) && isValidPlannedAbsence(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
-        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
+        allow read: if hasStaffAccess(userId) && (resource == null || isSecureOwner(existing(), userId));
+        allow list: if hasStaffAccess(userId) && resource.data.ownerId == userId;
+        allow create: if hasStaffAccess(userId) && isValidPlannedAbsence(incoming(), userId) && isValidTimestamp(incoming().createdAt) && isValidTimestamp(incoming().updatedAt);
+        allow update: if hasStaffAccess(userId) && isSecureOwner(existing(), userId) && incoming().ownerId == existing().ownerId && incoming().createdAt == existing().createdAt && isValidTimestamp(incoming().updatedAt) && (
           incoming().diff(existing()).affectedKeys().hasOnly(['studentId', 'fromDate', 'toDate', 'fromTime', 'toTime', 'reason', 'updatedAt'])
         ) && isValidPlannedAbsence(incoming(), userId);
-        allow delete: if isOwner(userId) && isSecureOwner(existing());
+        allow delete: if hasStaffAccess(userId) && isSecureOwner(existing(), userId);
       }
 
       match /settings/global {
-        allow read: if isOwner(userId) && (resource == null || isSecureOwner(existing()));
-        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
-        allow create: if isOwner(userId) && isValidSettings(incoming(), userId) && isValidTimestamp(incoming().updatedAt);
-        allow update: if isOwner(userId) && isSecureOwner(existing()) && incoming().ownerId == existing().ownerId && isValidTimestamp(incoming().updatedAt) && (
+        allow read: if hasStaffAccess(userId) && (resource == null || isSecureOwner(existing(), userId));
+        allow list: if hasStaffAccess(userId) && resource.data.ownerId == userId;
+        allow create: if hasStaffAccess(userId) && isValidSettings(incoming(), userId) && isValidTimestamp(incoming().updatedAt);
+        allow update: if hasStaffAccess(userId) && isSecureOwner(existing(), userId) && incoming().ownerId == existing().ownerId && isValidTimestamp(incoming().updatedAt) && (
           incoming().diff(existing()).affectedKeys().hasOnly(['shiurim', 'subjects', 'rooms', 'subjectClasses', 'updatedAt'])
         ) && isValidSettings(incoming(), userId);
         allow delete: if false;

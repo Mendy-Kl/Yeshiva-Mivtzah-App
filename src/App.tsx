@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppProvider, useAppStore } from './AppContext';
 import { SettingsView } from './components/SettingsView';
 import { HomeView } from './components/HomeView';
@@ -8,12 +8,20 @@ import { ReportsView } from './components/ReportsView';
 import { ExamsView } from './components/ExamsView';
 import { MivtzaView } from './components/MivtzaView';
 import { GeneralMatrixView } from './components/GeneralMatrixView';
-import { LayoutDashboard, Settings, FileText, BookOpen, GraduationCap, Award, Grid } from 'lucide-react';
+import { LayoutDashboard, Settings, FileText, BookOpen, GraduationCap, Award, Grid, LogOut, Users } from 'lucide-react';
 
 function AppContent() {
+  const { staffRole, logout, switchInstitution, user, institutions } = useAppStore();
   const [currentView, setCurrentView] = useState<'home' | 'settings' | 'reports' | 'exams' | 'mivtza' | 'matrix'>('home');
   const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
   const [activeNightId, setActiveNightId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // If a teacher somehow has 'settings' view (from cache), redirect to home
+    if (staffRole === 'teacher' && currentView === 'settings') {
+      setCurrentView('home');
+    }
+  }, [staffRole, currentView]);
   const { lessons, nightRegistrations } = useAppStore();
 
   if (activeLessonId) {
@@ -55,10 +63,10 @@ function AppContent() {
             <div className="bg-[var(--color-primary)] p-2 rounded-xl text-orange-900">
               <BookOpen size={24} />
             </div>
-            <span className="font-bold text-xl text-gray-900">השגחה</span>
+            <span className="font-bold text-xl text-gray-900 hidden sm:inline">השגחה</span>
           </div>
 
-          <nav className="flex items-center gap-1 sm:gap-2">
+          <nav className="flex flex-1 overflow-x-auto mx-4 no-scrollbar items-center gap-2">
             <NavButton 
               active={currentView === 'home'} 
               onClick={() => setCurrentView('home')}
@@ -91,13 +99,45 @@ function AppContent() {
               activeClass="bg-[#dcfce7] text-[#15803d]"
               inactiveClass="bg-[#dcfce7]/50 text-[#15803d] hover:bg-[#dcfce7]"
             />
-            <NavButton 
-              active={currentView === 'settings'} 
-              onClick={() => setCurrentView('settings')}
-              icon={<Settings size={18} />}
-              label="הגדרות"
-            />
+            {staffRole === 'admin' && (
+              <NavButton 
+                active={currentView === 'settings'} 
+                onClick={() => setCurrentView('settings')}
+                icon={<Settings size={18} />}
+                label="הגדרות"
+              />
+            )}
           </nav>
+          
+          <div className="flex items-center gap-2 border-r border-gray-200 pr-4">
+            {user?.email === 'mmkl770@gmail.com' ? (
+              <button
+                 onClick={switchInstitution}
+                 className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-2 px-3"
+                 title="מרכז ניהולי"
+              >
+                <Users size={18} />
+                <span className="text-sm font-bold hidden sm:inline">מרכז ניהולי</span>
+              </button>
+            ) : institutions?.length > 1 ? (
+              <button
+                 onClick={switchInstitution}
+                 className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-2 px-3"
+                 title="החלף מוסד"
+              >
+                <Users size={18} />
+                <span className="text-sm font-bold hidden sm:inline">החלף מוסד</span>
+              </button>
+            ) : null}
+            <button
+               onClick={logout}
+               className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors flex items-center gap-2 px-3"
+               title="התנתק"
+            >
+              <LogOut size={18} />
+              <span className="text-sm font-bold hidden sm:inline">התנתק</span>
+            </button>
+          </div>
         </div>
       </header>
 
